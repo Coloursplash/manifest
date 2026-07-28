@@ -52,18 +52,19 @@ export function Review({
       ? rated.reduce((s, e) => s + (e.entry.rating as number), 0) / rated.length
       : null;
 
-    // Activity buckets: months across a year, or days within a month.
+    // Activity buckets: months across a year, or days within a month. Keep the
+    // titles per bucket so a bar's tooltip can name what was logged.
     const bucketCount = isMonth
       ? new Date(year, (month as number) + 1, 0).getDate()
       : 12;
-    const counts = Array.from({ length: bucketCount }, (_, i) =>
-      events.filter((e) => {
-        const idx = isMonth
-          ? Number(e.date.slice(8, 10)) - 1
-          : Number(e.date.slice(5, 7)) - 1;
-        return idx === i;
-      }).length,
-    );
+    const bucketItems: string[][] = Array.from({ length: bucketCount }, () => []);
+    for (const e of events) {
+      const idx = isMonth
+        ? Number(e.date.slice(8, 10)) - 1
+        : Number(e.date.slice(5, 7)) - 1;
+      if (idx >= 0 && idx < bucketCount) bucketItems[idx].push(e.entry.title);
+    }
+    const counts = bucketItems.map((b) => b.length);
     const busiest = counts.reduce(
       (best, n, i) => (n > best.n ? { n, i } : best),
       { n: 0, i: -1 },
@@ -84,7 +85,7 @@ export function Review({
       return a.title.toLowerCase().localeCompare(b.title.toLowerCase());
     });
 
-    return { total: events.length, byMedium, distinct, avg, counts, busiest, titles };
+    return { total: events.length, byMedium, distinct, avg, counts, bucketItems, busiest, titles };
   }, [entries, year, month, isMonth]);
 
   const maxBucket = Math.max(1, ...stats.counts);
@@ -146,12 +147,13 @@ export function Review({
                 const showLabel = isMonth
                   ? i === 0 || (i + 1) % 5 === 0 || i === stats.counts.length - 1
                   : true;
+                const head = isMonth
+                  ? `${i + 1} ${MONTHS[month as number]} ${year}`
+                  : `${MONTHS[i]} ${year}`;
+                const items = stats.bucketItems[i];
+                const tip = items.length ? `${head}\n${items.join("\n")}` : `${head} · 0`;
                 return (
-                  <div
-                    className="barchart__col"
-                    key={i}
-                    title={`${isMonth ? i + 1 : MONTHS[i]}: ${n}`}
-                  >
+                  <div className="barchart__col" key={i} title={tip}>
                     <div className="barchart__track">
                       <div
                         className={`barchart__bar ${n === 0 ? "is-empty" : ""}`}
