@@ -58,6 +58,11 @@ export const deleteEntry = (id: string) =>
 export const searchMetadata = (medium: Medium, query: string) =>
   invoke<Candidate[]>("search_metadata", { medium, query });
 
+/** Extra metadata (crew, cast, genres, runtime) for a chosen hit, fetched once
+ *  on commit via its provider `reference`. Empty when no follow-up is needed. */
+export const fetchDetails = (medium: Medium, reference: string) =>
+  invoke<Record<string, unknown>>("fetch_details", { medium, reference });
+
 /** Cache a remote cover locally and return the on-disk path. */
 export const cacheCover = (url: string) =>
   invoke<string>("cache_cover", { url });

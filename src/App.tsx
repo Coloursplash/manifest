@@ -10,6 +10,7 @@ import { MEDIUM_LABEL, type Entry, type Medium } from "./lib/types";
 import { applyTheme, getTheme, type Theme } from "./lib/theme";
 import { applyAccent, getAccent } from "./lib/accent";
 import { getEnabledMedia, saveEnabledMedia } from "./lib/media";
+import { refreshEntry } from "./lib/refresh";
 import { IconPlus, IconSettings } from "./components/icons";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
@@ -90,6 +91,27 @@ export default function App() {
     });
   }, []);
 
+  // Re-fetch metadata for every entry, one at a time (kind to API rate limits).
+  // Entries with no confident match are counted as failures and left as-is.
+  const refreshAllMetadata = useCallback(
+    async (onProgress?: (done: number, total: number) => void) => {
+      const list = [...entries];
+      let updated = 0;
+      let failed = 0;
+      for (let i = 0; i < list.length; i++) {
+        try {
+          upsert(await refreshEntry(list[i]));
+          updated++;
+        } catch {
+          failed++;
+        }
+        onProgress?.(i + 1, list.length);
+      }
+      return { updated, failed, total: list.length };
+    },
+    [entries, upsert],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter((e) => {
@@ -148,7 +170,7 @@ export default function App() {
             className="input topbar__search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search library…"
+            placeholder="Filter library…"
           />
           <button
             className="btn btn--accent btn--lg"
@@ -212,6 +234,7 @@ export default function App() {
           onAccent={changeAccent}
           enabledMedia={enabledMedia}
           onToggleMedium={toggleMedium}
+          onRefreshAll={refreshAllMetadata}
           hasKey={hasKey}
           onKeyChanged={() => hasTmdbKey().then(setHasKey)}
           onClose={() => setShowSettings(false)}

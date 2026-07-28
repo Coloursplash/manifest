@@ -32,6 +32,11 @@ pub struct Candidate {
     pub summary: Option<String>,
     #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
     pub fields: serde_json::Map<String, serde_json::Value>,
+    /// Opaque provider handle for a follow-up detail fetch (see [`details`]).
+    /// Set by providers whose search response is too thin to carry crew/genres
+    /// (TMDB); `None` when search already returned everything (AniList, books).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// A shared reqwest client with a descriptive User-Agent and sane timeouts.
@@ -67,5 +72,32 @@ pub async fn search(
         Medium::Anime => anilist::search(query, anilist::Kind::Anime).await,
         Medium::Manga => anilist::search(query, anilist::Kind::Manga).await,
         Medium::Book => books::search(query).await,
+    }
+}
+
+/// Fetch the extra fields (crew, cast, genres, runtime) that a provider's
+/// search response omitted, keyed by a [`Candidate::reference`]. Called once,
+/// when the user commits an entry — never per search hit. Providers that
+/// already return everything have no reference, so this is a no-op for them.
+pub async fn details(
+    medium: Medium,
+    reference: &str,
+    tmdb_key: Option<&str>,
+) -> Result<serde_json::Map<String, serde_json::Value>> {
+    match medium {
+        Medium::Film | Medium::Tv => {
+            let (kind, id) = reference
+                .split_once(':')
+                .ok_or_else(|| anyhow::anyhow!("malformed reference: {reference}"))?;
+            let kind = match kind {
+                "movie" => tmdb::Kind::Movie,
+                "tv" => tmdb::Kind::Tv,
+                other => anyhow::bail!("unknown tmdb kind: {other}"),
+            };
+            let key = tmdb_key.ok_or_else(|| anyhow::anyhow!("TMDB API key not set"))?;
+            tmdb::details(key, kind, id).await
+        }
+        Medium::Book => books::details(reference).await,
+        Medium::Anime | Medium::Manga => Ok(serde_json::Map::new()),
     }
 }

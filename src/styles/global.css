@@ -649,6 +649,59 @@ input[type="date"] {
   font-family: var(--mono);
 }
 
+/* --- synopsis --- */
+.synopsis__text {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+.synopsis__text--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.synopsis__more {
+  margin-top: 8px;
+}
+
+/* --- add-flow candidate preview --- */
+.preview__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.preview__body {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 24px;
+}
+.preview__title {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.scard__title--link {
+  cursor: pointer;
+}
+.scard__title--link:hover {
+  color: var(--accent);
+}
+
 /* --- progress --- */
 .progress {
   display: flex;
@@ -859,6 +912,10 @@ input[type="date"] {
 .scard__overlay:hover {
   opacity: 1;
 }
+/* Clicking the cover art (not a button) opens the info preview. */
+.scard__cover {
+  cursor: pointer;
+}
 .scard__overlay .btn {
   border-color: rgba(255, 255, 255, 0.5);
   color: #fff;
@@ -894,6 +951,9 @@ input[type="date"] {
   place-items: start center;
   padding: 5vh 16px;
   overflow-y: auto;
+  /* Reserve the scrollbar's space on both sides so the modal doesn't shift
+     sideways when content grows past one screen and the scrollbar appears. */
+  scrollbar-gutter: stable both-edges;
   z-index: 20;
 }
 .modal {

@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import { Cover } from "../components/Cover";
-import { IconClose, IconSearch } from "../components/icons";
-import { appendNote, createEntry, patchEntry, searchMetadata } from "../lib/api";
+import { IconBack, IconClose, IconSearch } from "../components/icons";
+import {
+  appendNote,
+  createEntry,
+  fetchDetails,
+  patchEntry,
+  searchMetadata,
+} from "../lib/api";
+import { formatValue, humanizeLabel } from "../lib/fields";
 import { todayISO } from "../lib/notes";
 import {
   MEDIUM_LABEL,
@@ -56,15 +63,36 @@ export function AddEntryModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<Record<string, Status>>({});
+  // The result the user clicked to inspect before committing (null = grid view).
+  const [preview, setPreview] = useState<{ c: Candidate; key: string } | null>(null);
+  const [previewExtra, setPreviewExtra] = useState<Record<string, unknown>>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const keyMissing = (m: Medium) => (m === "film" || m === "tv") && !hasKey;
   const needsKey = keyMissing(medium);
+
+  // Open the info preview for a hit, pulling crew/genres for providers that
+  // gate them behind a detail call (TMDB). AniList/books already carry theirs.
+  async function openPreview(c: Candidate, key: string) {
+    setPreview({ c, key });
+    setPreviewExtra({});
+    if (!c.reference) return;
+    setPreviewLoading(true);
+    try {
+      setPreviewExtra(await fetchDetails(medium, c.reference));
+    } catch {
+      /* preview degrades to the fields search already returned */
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   async function runSearch(m: Medium, q: string) {
     if (!q.trim() || keyMissing(m)) return;
     setLoading(true);
     setError(null);
     setSearched(true);
+    setPreview(null);
     try {
       setResults(await searchMetadata(m, q.trim()));
     } catch (e) {
@@ -78,6 +106,7 @@ export function AddEntryModal({
   function switchMedium(m: Medium) {
     setMedium(m);
     setAdded({});
+    setPreview(null);
     // Re-run the same query in the new category — faster than retyping.
     if (query.trim() && !keyMissing(m)) {
       runSearch(m, query);
@@ -90,13 +119,22 @@ export function AddEntryModal({
   async function add(c: Candidate, key: string, status: Status) {
     setError(null);
     try {
+      // Pull crew/genres for providers that need a follow-up (TMDB), then fold
+      // in the summary. Enrichment is best-effort — a failed detail fetch still
+      // files the entry with what search already gave us.
+      const details = c.reference
+        ? await fetchDetails(medium, c.reference).catch(() => ({}))
+        : {};
+      const fields: Record<string, unknown> = { ...(c.fields ?? {}), ...details };
+      if (c.summary && fields.summary === undefined) fields.summary = c.summary;
+
       const created = await createEntry({
         medium,
         title: c.title,
         year: c.year,
         cover: c.cover,
         status,
-        fields: c.fields ?? {},
+        fields,
       });
       onCreated(await finalize(created, status));
       setAdded((a) => ({ ...a, [key]: status }));
@@ -135,6 +173,18 @@ export function AddEntryModal({
           </button>
         </div>
 
+        {preview ? (
+          <CandidatePreview
+            candidate={preview.c}
+            extra={previewExtra}
+            loading={previewLoading}
+            medium={medium}
+            added={added[preview.key]}
+            onBack={() => setPreview(null)}
+            onAdd={(status) => add(preview.c, preview.key, status)}
+          />
+        ) : (
+          <>
         {/* On "All", pick the type here; from a specific category the heading
             already names it, so no picker is shown. */}
         {initialMedium === null && (
@@ -207,35 +257,53 @@ export function AddEntryModal({
                 const done = added[key];
                 return (
                   <div className="scard" key={key}>
-                    <Cover url={c.cover} title={c.title}>
-                      {done ? (
-                        <div className="scard__added">✓ {statusLabel(medium, done)}</div>
-                      ) : (
-                        <div className="scard__overlay">
-                          <button
-                            className="btn btn--accent btn--block"
-                            onClick={() => add(c, key, "done")}
-                          >
-                            {quickLabel(medium, "done")}
-                          </button>
-                          <div className="row" style={{ gap: 6 }}>
+                    <div
+                      className="scard__cover"
+                      onClick={() => openPreview(c, key)}
+                      title="View details"
+                    >
+                      <Cover url={c.cover} title={c.title}>
+                        {done ? (
+                          <div className="scard__added">✓ {statusLabel(medium, done)}</div>
+                        ) : (
+                          <div className="scard__overlay">
                             <button
-                              className="btn btn--sm btn--block"
-                              onClick={() => add(c, key, "want")}
+                              className="btn btn--accent btn--block"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                add(c, key, "done");
+                              }}
                             >
-                              Plan
+                              {quickLabel(medium, "done")}
                             </button>
-                            <button
-                              className="btn btn--sm btn--block"
-                              onClick={() => add(c, key, "active")}
-                            >
-                              {quickLabel(medium, "active")}
-                            </button>
+                            <div className="row" style={{ gap: 6 }}>
+                              <button
+                                className="btn btn--sm btn--block"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  add(c, key, "want");
+                                }}
+                              >
+                                Plan
+                              </button>
+                              <button
+                                className="btn btn--sm btn--block"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  add(c, key, "active");
+                                }}
+                              >
+                                {quickLabel(medium, "active")}
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </Cover>
-                    <div className="scard__title">
+                        )}
+                      </Cover>
+                    </div>
+                    <div
+                      className="scard__title scard__title--link"
+                      onClick={() => openPreview(c, key)}
+                    >
                       {c.title}
                       {c.year ? ` (${c.year})` : ""}
                     </div>
@@ -261,8 +329,120 @@ export function AddEntryModal({
             )}
           </>
         )}
+          </>
+        )}
 
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Read-only info page for a search hit — cover, synopsis, crew, genres — so
+ *  the user can confirm it's the right title before committing. Adds from here
+ *  too. `extra` is the (possibly async) detail fetch merged over the hit. */
+function CandidatePreview({
+  candidate,
+  extra,
+  loading,
+  medium,
+  added,
+  onBack,
+  onAdd,
+}: {
+  candidate: Candidate;
+  extra: Record<string, unknown>;
+  loading: boolean;
+  medium: Medium;
+  added?: Status;
+  onBack: () => void;
+  onAdd: (status: Status) => void;
+}) {
+  const c = candidate;
+  const fields: Record<string, unknown> = { ...(c.fields ?? {}), ...extra };
+  const summary =
+    typeof fields.summary === "string" ? (fields.summary as string) : c.summary;
+  const genres = Array.isArray(fields.genres)
+    ? (fields.genres as unknown[]).map(String).filter(Boolean)
+    : undefined;
+  const rows = Object.entries(fields).filter(
+    ([k, v]) => k !== "summary" && k !== "genres" && v != null && `${v}` !== "",
+  );
+
+  return (
+    <div className="preview">
+      <div className="preview__bar">
+        <button className="btn btn--ghost" onClick={onBack}>
+          <IconBack size={16} /> Results
+        </button>
+        <div className="preview__actions">
+          {added ? (
+            <span className="btn" style={{ color: "var(--st-done)" }}>
+              ✓ {statusLabel(medium, added)}
+            </span>
+          ) : (
+            <>
+              <button className="btn btn--accent" onClick={() => onAdd("done")}>
+                {quickLabel(medium, "done")}
+              </button>
+              <button className="btn" onClick={() => onAdd("want")}>
+                Plan
+              </button>
+              <button className="btn" onClick={() => onAdd("active")}>
+                {quickLabel(medium, "active")}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="preview__body">
+        <div className="preview__cover">
+          <Cover url={c.cover} title={c.title} />
+        </div>
+        <div>
+          <h3 className="preview__title">
+            {c.title}
+            {c.year ? ` (${c.year})` : ""}
+          </h3>
+          {c.subtitle && <div className="detail__sub">{c.subtitle}</div>}
+
+          {genres && genres.length > 0 && (
+            <div className="tags" style={{ marginTop: 12 }}>
+              {genres.map((g) => (
+                <span className="tag" key={g}>
+                  {g}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {summary && (
+            <div className="section">
+              <div className="section__label">Synopsis</div>
+              <p className="synopsis__text">{summary}</p>
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="section">
+              <div className="section__label">Details</div>
+              <dl className="meta-table">
+                {rows.map(([k, v]) => (
+                  <Fragment key={k}>
+                    <dt>{humanizeLabel(k)}</dt>
+                    <dd>{formatValue(k, v)}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {loading && (
+            <p className="muted" style={{ fontSize: "0.78rem" }}>
+              Loading full details…
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

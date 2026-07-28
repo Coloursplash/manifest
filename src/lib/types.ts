@@ -75,6 +75,8 @@ export interface Candidate {
   subtitle?: string;
   summary?: string;
   fields?: Record<string, unknown>;
+  /** Provider handle for a follow-up detail fetch (crew/genres). TMDB only. */
+  reference?: string;
 }
 
 export interface CreatePayload {

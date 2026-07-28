@@ -13,6 +13,7 @@ export function SettingsModal({
   onAccent,
   enabledMedia,
   onToggleMedium,
+  onRefreshAll,
   hasKey,
   onKeyChanged,
   onClose,
@@ -23,6 +24,9 @@ export function SettingsModal({
   onAccent: (hex: string) => void;
   enabledMedia: Medium[];
   onToggleMedium: (m: Medium) => void;
+  onRefreshAll: (
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<{ updated: number; failed: number; total: number }>;
   hasKey: boolean;
   onKeyChanged: () => void;
   onClose: () => void;
@@ -31,6 +35,25 @@ export function SettingsModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  const [refreshing, setRefreshing] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+
+  async function runRefreshAll() {
+    if (refreshing) return;
+    setRefreshNote(null);
+    setRefreshing({ done: 0, total: 0 });
+    const res = await onRefreshAll((done, total) => setRefreshing({ done, total }));
+    setRefreshing(null);
+    setRefreshNote(
+      res.total === 0
+        ? "Library is empty — nothing to refresh."
+        : `Refreshed ${res.updated} of ${res.total}` +
+            (res.failed ? ` · ${res.failed} had no confident match.` : "."),
+    );
+  }
 
   async function save(clear = false) {
     setBusy(true);
@@ -138,6 +161,35 @@ export function SettingsModal({
               );
             })}
           </div>
+        </div>
+
+        {/* Library metadata */}
+        <div className="section">
+          <div className="section__label">Library metadata</div>
+          <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
+            Re-fetch covers, summaries, crew and genres for every entry — useful
+            for items added before richer metadata existed. Your notes, ratings,
+            status and progress are left untouched.
+          </p>
+          <div className="row" style={{ alignItems: "center", gap: 12 }}>
+            <button
+              className="btn btn--accent"
+              onClick={runRefreshAll}
+              disabled={!!refreshing}
+            >
+              {refreshing ? "Refreshing…" : "Refresh all metadata"}
+            </button>
+            {refreshing && refreshing.total > 0 && (
+              <span className="muted" style={{ fontSize: "0.78rem" }}>
+                {refreshing.done} / {refreshing.total}
+              </span>
+            )}
+          </div>
+          {refreshNote && (
+            <p className="muted" style={{ marginTop: 10, fontSize: "0.78rem" }}>
+              {refreshNote}
+            </p>
+          )}
         </div>
 
         {/* TMDB */}

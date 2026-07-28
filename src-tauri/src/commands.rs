@@ -202,6 +202,25 @@ async fn search_metadata(
         .map_err(err)
 }
 
+/// Fetch the extra metadata (crew, cast, genres, runtime) for a chosen search
+/// hit, keyed by its provider `reference`. Called once, on commit; returns a
+/// bag of fields to merge into the new entry. Degrades to an empty map when a
+/// provider needs no follow-up.
+#[tauri::command]
+async fn fetch_details(
+    app: AppHandle,
+    medium: String,
+    reference: String,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let medium: Medium = medium
+        .parse()
+        .map_err(|_| format!("unknown medium: {medium}"))?;
+    let key = state::tmdb_key(&app);
+    fetch::details(medium, &reference, key.as_deref())
+        .await
+        .map_err(err)
+}
+
 /// Download a cover into the local cache and return its file path.
 #[tauri::command]
 async fn cache_cover(app: AppHandle, url: String) -> Result<String, String> {
@@ -242,6 +261,7 @@ pub fn handlers() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sy
         create_entry,
         delete_entry,
         search_metadata,
+        fetch_details,
         cache_cover,
         has_tmdb_key,
         set_tmdb_key,

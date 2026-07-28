@@ -9,6 +9,7 @@ import {
   patchEntry,
   updateNote,
 } from "../lib/api";
+import { formatValue, humanizeLabel } from "../lib/fields";
 import { parseNotes, todayISO, type NoteBlock } from "../lib/notes";
 import {
   MEDIUM_LABEL,
@@ -71,8 +72,16 @@ export function EntryDetail({
     if (done !== undefined) onDeleted();
   }
 
-  const extraEntries = Object.entries(entry.extra ?? {}).filter(
-    ([k, v]) => k !== totalKey && v !== null && v !== undefined && `${v}` !== "",
+  // Summary and genres get their own treatment (a paragraph, chips); the total
+  // is already shown in Progress. Everything else falls through to the table.
+  const extra = entry.extra ?? {};
+  const summary = typeof extra.summary === "string" ? extra.summary : undefined;
+  const genres = Array.isArray(extra.genres)
+    ? (extra.genres as unknown[]).map(String).filter(Boolean)
+    : undefined;
+  const hidden = new Set(["summary", "genres", ...(totalKey ? [totalKey] : [])]);
+  const detailRows = Object.entries(extra).filter(
+    ([k, v]) => !hidden.has(k) && v !== null && v !== undefined && `${v}` !== "",
   );
 
   return (
@@ -127,13 +136,33 @@ export function EntryDetail({
           {/* rating: 5 half-fillable circles = /10 */}
           <RatingCircles value={entry.rating} onSet={(n) => patch({ rating: n })} />
 
-          {/* details first — author etc. matter more than how far in you are */}
-          {extraEntries.length > 0 && (
+          {genres && genres.length > 0 && (
+            <div className="section">
+              <div className="section__label">Genres</div>
+              <div className="tags">
+                {genres.map((g) => (
+                  <span className="tag" key={g}>
+                    {g}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {summary && (
+            <div className="section">
+              <div className="section__label">Synopsis</div>
+              <Synopsis text={summary} />
+            </div>
+          )}
+
+          {/* details — author/crew etc. matter more than how far in you are */}
+          {detailRows.length > 0 && (
             <div className="section">
               <div className="section__label">Details</div>
               <dl className="meta-table">
-                {extraEntries.map(([k, v]) => (
-                  <FieldRow key={k} label={k} value={v} />
+                {detailRows.map(([k, v]) => (
+                  <FieldRow key={k} label={humanizeLabel(k)} value={formatValue(k, v)} />
                 ))}
               </dl>
             </div>
@@ -578,3 +607,30 @@ function FieldRow({ label, value }: { label: string; value: unknown }) {
     </>
   );
 }
+
+// --- synopsis: clamp long descriptions behind a show-more toggle ---
+
+function Synopsis({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const long = text.length > 320;
+  return (
+    <div className="synopsis">
+      <p
+        className={`synopsis__text ${
+          long && !expanded ? "synopsis__text--clamped" : ""
+        }`}
+      >
+        {text}
+      </p>
+      {long && (
+        <button
+          className="btn btn--ghost btn--sm synopsis__more"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+

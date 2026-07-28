@@ -1,6 +1,7 @@
 //! Books — Open Library first (no key), Google Books as fallback.
 
 use anyhow::Result;
+use serde_json::{Map, Value};
 
 use super::{client, Candidate};
 
@@ -10,6 +11,34 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>> {
         hits = google_books(query).await.unwrap_or_default();
     }
     Ok(hits)
+}
+
+/// Fetch a book's synopsis. Open Library's search endpoint omits descriptions,
+/// so this hits the work record (referenced by its `/works/OL…W` key). Google
+/// Books results already carry a summary from search, so they have no
+/// reference and never reach here.
+pub async fn details(reference: &str) -> Result<Map<String, Value>> {
+    let url = format!("https://openlibrary.org{reference}.json");
+    let resp = client().get(url).send().await?.error_for_status()?;
+    let json: Value = resp.json().await?;
+
+    let mut fields = Map::new();
+    if let Some(desc) = description(&json) {
+        fields.insert("summary".into(), desc.into());
+    }
+    Ok(fields)
+}
+
+/// Open Library `description` is sometimes a plain string, sometimes a
+/// `{ type, value }` object. Return the trimmed text either way.
+fn description(json: &Value) -> Option<String> {
+    let raw = match json.get("description") {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Object(o)) => o.get("value").and_then(|v| v.as_str()).map(str::to_string),
+        _ => None,
+    }?;
+    let trimmed = raw.trim().to_string();
+    (!trimmed.is_empty()).then_some(trimmed)
 }
 
 async fn open_library(query: &str) -> Result<Vec<Candidate>> {
@@ -55,6 +84,11 @@ async fn open_library(query: &str) -> Result<Vec<Candidate>> {
         if let Some(pages) = d.get("number_of_pages_median").and_then(|v| v.as_i64()) {
             fields.insert("pages".into(), pages.into());
         }
+        if let Some(genres) = subjects(d.get("subject")) {
+            fields.insert("genres".into(), genres);
+        }
+        // The work key ("/works/OL…W") lets us fetch the synopsis on commit.
+        let reference = d.get("key").and_then(|v| v.as_str()).map(str::to_string);
 
         out.push(Candidate {
             title,
@@ -63,9 +97,23 @@ async fn open_library(query: &str) -> Result<Vec<Candidate>> {
             subtitle: author,
             summary: None,
             fields,
+            reference,
         });
     }
     Ok(out)
+}
+
+/// Open Library returns a long, noisy `subject` list; keep the first handful as
+/// genre-ish tags. Returns `None` when there's nothing usable.
+fn subjects(v: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    let arr = v?.as_array()?;
+    let picked: Vec<serde_json::Value> = arr
+        .iter()
+        .filter_map(|s| s.as_str())
+        .take(6)
+        .map(|s| serde_json::Value::from(s.to_string()))
+        .collect();
+    (!picked.is_empty()).then(|| serde_json::Value::Array(picked))
 }
 
 async fn google_books(query: &str) -> Result<Vec<Candidate>> {
@@ -122,6 +170,9 @@ async fn google_books(query: &str) -> Result<Vec<Candidate>> {
         if let Some(pages) = info.get("pageCount").and_then(|v| v.as_i64()) {
             fields.insert("pages".into(), pages.into());
         }
+        if let Some(genres) = subjects(info.get("categories")) {
+            fields.insert("genres".into(), genres);
+        }
 
         out.push(Candidate {
             title,
@@ -130,6 +181,7 @@ async fn google_books(query: &str) -> Result<Vec<Candidate>> {
             subtitle: author,
             summary,
             fields,
+            reference: None,
         });
     }
     Ok(out)
