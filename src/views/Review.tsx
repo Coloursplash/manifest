@@ -69,18 +69,22 @@ export function Review({
       { n: 0, i: -1 },
     );
 
-    // Highest-rated distinct entries in the period.
+    // Distinct entries logged in the period, rated first (desc) then by title —
+    // so unrated things (e.g. a book with no score) still show up.
     const seen = new Map<string, Entry>();
     for (const e of events) {
-      if (typeof e.entry.rating === "number" && !seen.has(e.entry.id)) {
-        seen.set(e.entry.id, e.entry);
-      }
+      if (!seen.has(e.entry.id)) seen.set(e.entry.id, e.entry);
     }
-    const top = [...seen.values()]
-      .sort((a, b) => (b.rating as number) - (a.rating as number))
-      .slice(0, 6);
+    const titles = [...seen.values()].sort((a, b) => {
+      const ar = a.rating;
+      const br = b.rating;
+      if (ar != null && br != null && ar !== br) return br - ar;
+      if (ar != null && br == null) return -1;
+      if (ar == null && br != null) return 1;
+      return a.title.toLowerCase().localeCompare(b.title.toLowerCase());
+    });
 
-    return { total: events.length, byMedium, distinct, avg, counts, busiest, top };
+    return { total: events.length, byMedium, distinct, avg, counts, busiest, titles };
   }, [entries, year, month, isMonth]);
 
   const maxBucket = Math.max(1, ...stats.counts);
@@ -161,11 +165,11 @@ export function Review({
             </div>
           </section>
 
-          {stats.top.length > 0 && (
+          {stats.titles.length > 0 && (
             <section className="section">
-              <div className="section__label">Top rated</div>
+              <div className="section__label">Titles</div>
               <div className="grid">
-                {stats.top.map((e) => (
+                {stats.titles.map((e) => (
                   <div className="card" key={e.id} onClick={() => onOpen(e.id)}>
                     <Cover url={e.cover} title={e.title}>
                       {e.status && (
