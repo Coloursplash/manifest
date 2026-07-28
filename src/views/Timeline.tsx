@@ -14,10 +14,12 @@ function fmtRating(r: number): string {
 export function Timeline({
   events,
   onOpen,
+  onOpenYear,
   emptyHint,
 }: {
   events: TimelineEvent[];
   onOpen: (id: string) => void;
+  onOpenYear: (year: number) => void;
   emptyHint: string;
 }) {
   const groups = useMemo(() => groupByMonth(events), [events]);
@@ -34,7 +36,12 @@ export function Timeline({
     <div className="timeline">
       {groups.map((g) => (
         <Fragment key={g.key}>
-          {g.startsYear && <div className="tl-year">{g.year}</div>}
+          {g.startsYear && (
+            <button className="tl-year" onClick={() => onOpenYear(g.year)}>
+              {g.year}
+              <span className="tl-year__cta">In review →</span>
+            </button>
+          )}
           <div className="tl-month">
             <div className="tl-month__label">{g.label}</div>
             <div className="tl-month__counts">

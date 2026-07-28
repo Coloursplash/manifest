@@ -154,8 +154,7 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   system), `components/Cover.tsx`, `views/{Onboarding,LibraryGrid,EntryDetail,AddEntryModal,
   SettingsModal}.tsx`, `App.tsx`. Full `tsc` + `cargo build` link clean.
 
-- **v1.2 in progress — timeline + views roadmap.** Phased; timeline first, docs updated per
-  phase.
+- **v1.2 done — timeline + views roadmap.** Phased; timeline first, docs updated per phase.
   - **Phase 1 done** — Timeline (diary) view. `lib/timeline.ts` (`buildTimeline` flattens each
     dated `notes` block into an event — `#rewatch`/`#reread` show separately — plus a
     `finished`-date fallback when no log covers that day; `groupByMonth` buckets for
@@ -173,9 +172,15 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     Name / Recently finished / Recently released / My score; missing fields sort last. A
     `.select` in the topbar (grid layout only — the timeline stays date-desc) drives it;
     `App` sorts `filtered` → `sorted` and feeds it to the grid.
-  - **Phase 4 (next)** — dedicated "Year in Review" page, reached from a timeline year header.
+  - **Phase 4 done** — dedicated "Year in Review" page. `views/YearInReview.tsx` aggregates
+    `buildTimeline(entries)` for a year: logged/titles/avg-score/busiest-month stat tiles, a
+    by-medium breakdown, a 12-month activity bar chart, and top-rated covers. Reached by
+    clicking a year header on the timeline; `App`'s `View` gains a `{kind:"review"; year}`
+    case. Whole-library (ignores the medium tab), read-only.
 
-v1 core loop complete. Next after the views roadmap: import from other trackers, custom media
-types.
+Known: user has reported bugs in the new views to be triaged; project has no frontend test
+suite yet (planned).
+
+v1 core loop complete. Next: import from other trackers, custom media types, frontend tests.
 
 Dev loop: `nix develop -c npm run tauri dev`. Tests: `nix develop -c bash -c 'cd src-tauri && cargo test'`.

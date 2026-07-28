@@ -21,8 +21,12 @@ import { Timeline } from "./views/Timeline";
 import { EntryDetail } from "./views/EntryDetail";
 import { AddEntryModal } from "./views/AddEntryModal";
 import { SettingsModal } from "./views/SettingsModal";
+import { YearInReview } from "./views/YearInReview";
 
-type View = { kind: "grid" } | { kind: "detail"; id: string };
+type View =
+  | { kind: "grid" }
+  | { kind: "detail"; id: string }
+  | { kind: "review"; year: number };
 
 export default function App() {
   const [libraryPath, setLibraryPath] = useState<string | null | undefined>(
@@ -232,7 +236,14 @@ export default function App() {
       </div>
 
       <div className="content">
-        {view.kind === "detail" && selected ? (
+        {view.kind === "review" ? (
+          <YearInReview
+            year={view.year}
+            entries={entries}
+            onBack={() => setView({ kind: "grid" })}
+            onOpen={(id) => setView({ kind: "detail", id })}
+          />
+        ) : view.kind === "detail" && selected ? (
           <EntryDetail
             entry={selected}
             onBack={() => setView({ kind: "grid" })}
@@ -246,6 +257,7 @@ export default function App() {
           <Timeline
             events={timelineEvents}
             onOpen={(id) => setView({ kind: "detail", id })}
+            onOpenYear={(year) => setView({ kind: "review", year })}
             emptyHint={
               entries.length === 0
                 ? "Your library is empty — hit + Add to log something."

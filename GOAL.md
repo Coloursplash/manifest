@@ -79,9 +79,9 @@ type, grid layouts, a little playfulness. The UI should feel like a piece of har
 **In scope (v1):** the 5 media types, TOML files, auto-fetch + cover cache, search, status/
 lists, grid browse, note viewing/appending, TE-styled UI.
 
-**In progress (v1.2):** timeline/diary view + grouped, collapsible grid + sort controls +
-a dedicated "Year in Review" summary page. Built incrementally, timeline first. All derived
-client-side from the dated `notes` log + `finished` dates — no new storage.
+**Done (v1.2):** timeline/diary view + grouped, collapsible grid + sort controls + a
+dedicated "Year in Review" summary page. All derived client-side from the dated `notes` log
++ `finished` dates — no new storage.
 
 **Later:** deeper stats/insights, import from Letterboxd/MAL/Goodreads exports, custom media
 types, tags/collections, multi-device sync via the user's own git repo or file-sync tool.
