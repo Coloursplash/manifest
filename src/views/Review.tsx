@@ -151,9 +151,10 @@ export function Review({
                   ? `${i + 1} ${MONTHS[month as number]} ${year}`
                   : `${MONTHS[i]} ${year}`;
                 const items = stats.bucketItems[i];
-                const tip = items.length ? `${head}\n${items.join("\n")}` : `${head} · 0`;
+                const side =
+                  i < 3 ? "start" : i > stats.counts.length - 4 ? "end" : "center";
                 return (
-                  <div className="barchart__col" key={i} title={tip}>
+                  <div className="barchart__col" key={i}>
                     <div className="barchart__track">
                       <div
                         className={`barchart__bar ${n === 0 ? "is-empty" : ""}`}
@@ -161,6 +162,18 @@ export function Review({
                       />
                     </div>
                     <div className="barchart__label">{showLabel ? label : ""}</div>
+                    <div className={`barchart__tip barchart__tip--${side}`} role="tooltip">
+                      <div className="barchart__tip-head">{head}</div>
+                      {items.length ? (
+                        <ul className="barchart__tip-list">
+                          {items.map((t, j) => (
+                            <li key={j}>{t}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="barchart__tip-empty">Nothing logged</div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
