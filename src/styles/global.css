@@ -1327,7 +1327,10 @@ input[type="date"] {
 .barchart__bar {
   width: 100%;
   background: var(--accent);
-  min-height: 2px;
+  min-height: 3px; /* keep a small non-zero count visible */
+}
+.barchart__bar.is-empty {
+  min-height: 0; /* a zero day draws nothing, just the baseline */
 }
 .barchart__label {
   font-family: var(--mono);

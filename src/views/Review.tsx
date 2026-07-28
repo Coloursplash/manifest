@@ -150,7 +150,7 @@ export function Review({
                   >
                     <div className="barchart__track">
                       <div
-                        className="barchart__bar"
+                        className={`barchart__bar ${n === 0 ? "is-empty" : ""}`}
                         style={{ height: `${(n / maxBucket) * 100}%` }}
                       />
                     </div>
