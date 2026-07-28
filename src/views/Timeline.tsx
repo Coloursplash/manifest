@@ -15,11 +15,13 @@ export function Timeline({
   events,
   onOpen,
   onOpenYear,
+  onOpenMonth,
   emptyHint,
 }: {
   events: TimelineEvent[];
   onOpen: (id: string) => void;
   onOpenYear: (year: number) => void;
+  onOpenMonth: (year: number, month: number) => void;
   emptyHint: string;
 }) {
   const groups = useMemo(() => groupByMonth(events), [events]);
@@ -43,7 +45,13 @@ export function Timeline({
             </button>
           )}
           <div className="tl-month">
-            <div className="tl-month__label">{g.label}</div>
+            <button
+              className="tl-month__label"
+              onClick={() => onOpenMonth(g.year, g.month)}
+              title={`${g.label} in review`}
+            >
+              {g.label}
+            </button>
             <div className="tl-month__counts">
               {g.counts.map((c) => (
                 <span key={c.medium}>

@@ -172,11 +172,12 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     Name / Recently finished / Recently released / My score; missing fields sort last. A
     `.select` in the topbar (grid layout only — the timeline stays date-desc) drives it;
     `App` sorts `filtered` → `sorted` and feeds it to the grid.
-  - **Phase 4 done** — dedicated "Year in Review" page. `views/YearInReview.tsx` aggregates
-    `buildTimeline(entries)` for a year: logged/titles/avg-score/busiest-month stat tiles, a
-    by-medium breakdown, a 12-month activity bar chart, and top-rated covers. Reached by
-    clicking a year header on the timeline; `App`'s `View` gains a `{kind:"review"; year}`
-    case. Whole-library (ignores the medium tab), read-only.
+  - **Phase 4 done** — dedicated "In Review" page, per **year or month**. `views/Review.tsx`
+    aggregates `buildTimeline(entries)` for the period: logged/titles/avg-score/busiest
+    (month for a year, day for a month) stat tiles, a by-medium breakdown, an activity bar
+    chart (12 months, or per-day for a month), and top-rated covers. Reached by clicking a
+    year *or* month header on the timeline; `App`'s `View` gains a
+    `{kind:"review"; year; month?}` case. Whole-library (ignores the medium tab), read-only.
 
 Known: user has reported bugs in the new views to be triaged; project has no frontend test
 suite yet (planned).
