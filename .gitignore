@@ -1,0 +1,27 @@
+# Rust
+/src-tauri/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri build output
+/src-tauri/gen/
+
+# direnv / nix
+.direnv/
+
+# Secrets — API keys never get committed
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
