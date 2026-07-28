@@ -10,10 +10,14 @@ import { MEDIUM_LABEL, type Entry, type Medium } from "./lib/types";
 import { applyTheme, getTheme, type Theme } from "./lib/theme";
 import { applyAccent, getAccent } from "./lib/accent";
 import { getEnabledMedia, saveEnabledMedia } from "./lib/media";
+import { getLayout, setLayout, type Layout } from "./lib/layout";
+import { getSort, setSort, sortEntries, SORT_KEYS, SORT_LABEL, type SortKey } from "./lib/sort";
+import { buildTimeline } from "./lib/timeline";
 import { refreshEntry } from "./lib/refresh";
 import { IconPlus, IconSettings } from "./components/icons";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
+import { Timeline } from "./views/Timeline";
 import { EntryDetail } from "./views/EntryDetail";
 import { AddEntryModal } from "./views/AddEntryModal";
 import { SettingsModal } from "./views/SettingsModal";
@@ -28,6 +32,8 @@ export default function App() {
   const [hasKey, setHasKey] = useState(false);
 
   const [view, setView] = useState<View>({ kind: "grid" });
+  const [layout, setLayoutState] = useState<Layout>(getLayout());
+  const [sort, setSortState] = useState<SortKey>(getSort());
   const [filterMedium, setFilterMedium] = useState<Medium | null>(null);
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -43,6 +49,12 @@ export default function App() {
   function changeAccent(hex: string) {
     applyAccent(hex);
     setAccent(hex);
+  }
+  function changeLayout(l: Layout) {
+    setLayoutState(setLayout(l));
+  }
+  function changeSort(k: SortKey) {
+    setSortState(setSort(k));
   }
   function toggleMedium(m: Medium) {
     const on = enabledMedia.includes(m);
@@ -129,6 +141,9 @@ export default function App() {
     });
   }, [entries, filterMedium, query]);
 
+  const sorted = useMemo(() => sortEntries(filtered, sort), [filtered, sort]);
+  const timelineEvents = useMemo(() => buildTimeline(filtered), [filtered]);
+
   if (libraryPath === undefined) {
     return <div className="center spinner">loading…</div>;
   }
@@ -166,6 +181,34 @@ export default function App() {
           ))}
         </div>
         <div className="topbar__actions">
+          <div className="seg" role="group" aria-label="View">
+            <button
+              className={`seg__btn ${layout === "grid" ? "seg__btn--on" : ""}`}
+              onClick={() => changeLayout("grid")}
+            >
+              Grid
+            </button>
+            <button
+              className={`seg__btn ${layout === "timeline" ? "seg__btn--on" : ""}`}
+              onClick={() => changeLayout("timeline")}
+            >
+              Timeline
+            </button>
+          </div>
+          {layout === "grid" && (
+            <select
+              className="select"
+              value={sort}
+              onChange={(e) => changeSort(e.target.value as SortKey)}
+              title="Sort"
+            >
+              {SORT_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {SORT_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          )}
           <input
             className="input topbar__search"
             value={query}
@@ -189,17 +232,7 @@ export default function App() {
       </div>
 
       <div className="content">
-        {view.kind === "grid" || !selected ? (
-          <LibraryGrid
-            entries={filtered}
-            onOpen={(id) => setView({ kind: "detail", id })}
-            emptyHint={
-              entries.length === 0
-                ? "Your library is empty — hit + Add to log something."
-                : "Nothing matches that filter."
-            }
-          />
-        ) : (
+        {view.kind === "detail" && selected ? (
           <EntryDetail
             entry={selected}
             onBack={() => setView({ kind: "grid" })}
@@ -208,6 +241,26 @@ export default function App() {
               setEntries((prev) => prev.filter((e) => e.id !== selected.id));
               setView({ kind: "grid" });
             }}
+          />
+        ) : layout === "timeline" ? (
+          <Timeline
+            events={timelineEvents}
+            onOpen={(id) => setView({ kind: "detail", id })}
+            emptyHint={
+              entries.length === 0
+                ? "Your library is empty — hit + Add to log something."
+                : "Nothing dated to show yet — log a watch/read date on an entry."
+            }
+          />
+        ) : (
+          <LibraryGrid
+            entries={sorted}
+            onOpen={(id) => setView({ kind: "detail", id })}
+            emptyHint={
+              entries.length === 0
+                ? "Your library is empty — hit + Add to log something."
+                : "Nothing matches that filter."
+            }
           />
         )}
       </div>

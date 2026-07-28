@@ -60,8 +60,12 @@ The exact schema (shared fields + per-medium fields + status/list fields) is def
 - **Fast search** across the whole library.
 - **Watch/read lists & status** — want-to / in-progress / finished, per entry, stored in
   the file itself.
-- **Browse & visualise** the library in a grid/shelf view.
+- **Browse & visualise** the library two ways: a grid/shelf view (grouped by status —
+  in-progress / watchlist / done) and a **timeline/diary** view that scrolls your dated
+  watch/read events by month and year, Letterboxd-style, with per-year summaries.
+- **Sort** the library by name, recently finished, recently released, or your own score.
 - **View & append notes** — especially quick "log a new dated entry" for a rewatch/reread.
+  These dated log blocks are exactly what the timeline is built from.
 - Never require any of the above: hand-editing files always works.
 
 ## Aesthetic
@@ -75,8 +79,12 @@ type, grid layouts, a little playfulness. The UI should feel like a piece of har
 **In scope (v1):** the 5 media types, TOML files, auto-fetch + cover cache, search, status/
 lists, grid browse, note viewing/appending, TE-styled UI.
 
-**Later:** stats/insights, import from Letterboxd/MAL/Goodreads exports, custom media types,
-tags/collections, multi-device sync via the user's own git repo or file-sync tool.
+**In progress (v1.2):** timeline/diary view + grouped, collapsible grid + sort controls +
+a dedicated "Year in Review" summary page. Built incrementally, timeline first. All derived
+client-side from the dated `notes` log + `finished` dates — no new storage.
+
+**Later:** deeper stats/insights, import from Letterboxd/MAL/Goodreads exports, custom media
+types, tags/collections, multi-device sync via the user's own git repo or file-sync tool.
 
 **Explicitly out of scope:** any hosted backend, accounts, social features, telemetry, or
 storing user data anywhere but the user's chosen library folder.

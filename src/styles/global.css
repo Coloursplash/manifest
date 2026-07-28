@@ -993,3 +993,215 @@ input[type="date"] {
   justify-content: center;
   gap: 0.5rem;
 }
+
+/* --- sort select --- */
+.select {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--r);
+  padding: 0.55em 0.7em;
+  cursor: pointer;
+}
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* --- segmented view toggle (grid / timeline) --- */
+.seg {
+  display: inline-flex;
+  flex: none;
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.seg__btn {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-right: 1.5px solid var(--line-2);
+  padding: 0.6em 1em;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.seg__btn:last-child {
+  border-right: none;
+}
+.seg__btn:hover {
+  color: var(--fg);
+}
+.seg__btn--on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* --- grouped, collapsible library sections --- */
+.sections {
+  display: flex;
+  flex-direction: column;
+}
+.lib-section__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--line);
+  cursor: pointer;
+  text-align: left;
+  padding: 15px 2px 13px;
+  transition: border-color 0.1s ease;
+}
+.lib-section__head:hover {
+  border-color: var(--line-2);
+}
+.lib-section__chevron {
+  color: var(--accent);
+  font-size: 0.8rem;
+  line-height: 1;
+  display: inline-block;
+  transition: transform 0.12s ease;
+}
+.lib-section__chevron.is-open {
+  transform: rotate(90deg);
+}
+.lib-section__label {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+.lib-section__count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--muted);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+  padding: 0.12em 0.55em;
+}
+.lib-section__head:hover .lib-section__count {
+  border-color: var(--line-2);
+  color: var(--fg);
+}
+.lib-section__body {
+  padding: 22px 0 30px;
+}
+.lib-mediagroup + .lib-mediagroup {
+  margin-top: 28px;
+}
+.lib-subhead {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+/* --- timeline (diary) --- */
+.timeline {
+  max-width: 1160px;
+}
+.tl-year {
+  font-family: var(--mono);
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  padding-bottom: 6px;
+  margin: 40px 0 6px;
+  border-bottom: 2px solid var(--line-2);
+}
+.tl-year:first-child {
+  margin-top: 0;
+}
+.tl-month {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 30px 0 6px;
+}
+.tl-month__label {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.tl-month__counts {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+/* a day: date node on the spine, that day's items flowing to the right */
+.tl-day {
+  display: flex;
+  gap: 22px;
+  padding: 18px 0;
+  border-top: 1.5px solid var(--line);
+}
+.tl-day__date {
+  width: 62px;
+  flex: none;
+  text-align: right;
+  font-family: var(--mono);
+  line-height: 1;
+  padding-top: 4px;
+}
+.tl-day__num {
+  display: block;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+.tl-day__wd {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.tl-day__items {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.tl-card {
+  width: 104px;
+  flex: none;
+}
+.tl-card__repeat {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.8rem;
+  border: 2px solid var(--bg);
+}

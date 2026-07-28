@@ -154,6 +154,28 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   system), `components/Cover.tsx`, `views/{Onboarding,LibraryGrid,EntryDetail,AddEntryModal,
   SettingsModal}.tsx`, `App.tsx`. Full `tsc` + `cargo build` link clean.
 
-v1 core loop complete. Next: import from other trackers, stats, custom media types.
+- **v1.2 in progress — timeline + views roadmap.** Phased; timeline first, docs updated per
+  phase.
+  - **Phase 1 done** — Timeline (diary) view. `lib/timeline.ts` (`buildTimeline` flattens each
+    dated `notes` block into an event — `#rewatch`/`#reread` show separately — plus a
+    `finished`-date fallback when no log covers that day; `groupByMonth` buckets for
+    rendering). `views/Timeline.tsx` renders newest-first with year/month dividers + per-month
+    medium counts. `lib/layout.ts` persists the grid⇄timeline choice; a `GRID | TIMELINE`
+    toggle in the topbar (`.tabs--layout`) branches `App.tsx`'s content. Both layouts share the
+    existing medium-tab + search `filtered` list. Pure client-side, read-only over `notes`.
+  - **Phase 2 done** — grouped, collapsible grid. `views/LibraryGrid.tsx` now buckets the
+    (already filtered) entries by status into sections: In Progress (active+paused,
+    sub-grouped by medium, open by default) → Watchlist (want) → Done → Dropped, plus an
+    Unsorted catch-all for statusless entries. Each section is a collapsible summary with a
+    count; open/closed state persists in localStorage (`manifest-sections`). Empty sections
+    are hidden.
+  - **Phase 3 done** — sort controls. `lib/sort.ts` (`sortEntries` + persisted `SortKey`):
+    Name / Recently finished / Recently released / My score; missing fields sort last. A
+    `.select` in the topbar (grid layout only — the timeline stays date-desc) drives it;
+    `App` sorts `filtered` → `sorted` and feeds it to the grid.
+  - **Phase 4 (next)** — dedicated "Year in Review" page, reached from a timeline year header.
+
+v1 core loop complete. Next after the views roadmap: import from other trackers, custom media
+types.
 
 Dev loop: `nix develop -c npm run tauri dev`. Tests: `nix develop -c bash -c 'cd src-tauri && cargo test'`.
