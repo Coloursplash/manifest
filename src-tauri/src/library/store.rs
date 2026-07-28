@@ -165,17 +165,9 @@ fn entry_from_doc(medium: Medium, slug: &str, doc: &DocumentMut) -> Entry {
     }
 }
 
-/// Append a new dated block to an entry's `notes`, preserving everything else.
-///
-/// The header line is `YYYY-MM-DD` followed by any `tags` rendered as `#tag`
-/// (so "rewatch" is a tag, not prose). `body` may be empty — logging just a
-/// date with tags ("watched it") is a first-class action. Existing blocks are
-/// never rewritten.
-pub fn append_note(root: &Path, id: &str, date: &str, tags: &[String], body: &str) -> Result<Entry> {
-    let (medium, slug) = parse_id(id)?;
-    let path = entry_path(root, medium, &slug);
-    let mut doc = read_doc(&path)?;
-
+/// Build one note block: a `YYYY-MM-DD` header with any `tags` as `#tag`, and
+/// an optional body. Empty body → a bare dated line ("watched it").
+fn build_block(date: &str, tags: &[String], body: &str) -> String {
     let mut header = date.trim().to_string();
     for tag in tags {
         let t = tag.trim().trim_start_matches('#');
@@ -184,14 +176,52 @@ pub fn append_note(root: &Path, id: &str, date: &str, tags: &[String], body: &st
             header.push_str(t);
         }
     }
-
     let body = body.trim_end();
-    let block = if body.is_empty() {
+    if body.is_empty() {
         header
     } else {
         format!("{header}\n{body}")
-    };
+    }
+}
 
+/// Split a notes string into blocks on blank lines (matching the frontend
+/// parser), so blocks can be addressed by index for edit/delete.
+fn split_blocks(notes: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut cur: Vec<&str> = Vec::new();
+    for line in notes.lines() {
+        if line.trim().is_empty() {
+            if !cur.is_empty() {
+                blocks.push(cur.join("\n"));
+                cur.clear();
+            }
+        } else {
+            cur.push(line);
+        }
+    }
+    if !cur.is_empty() {
+        blocks.push(cur.join("\n"));
+    }
+    blocks
+}
+
+/// Write note blocks back (or remove `notes` entirely if none remain).
+/// Assigning a plain multi-line string lets toml_edit pick a `"""` repr.
+fn write_blocks(doc: &mut DocumentMut, blocks: &[String]) {
+    if blocks.is_empty() {
+        doc.as_table_mut().remove("notes");
+    } else {
+        doc["notes"] = value(format!("{}\n", blocks.join("\n\n")));
+    }
+}
+
+/// Append a new dated block to an entry's `notes`, preserving everything else.
+pub fn append_note(root: &Path, id: &str, date: &str, tags: &[String], body: &str) -> Result<Entry> {
+    let (medium, slug) = parse_id(id)?;
+    let path = entry_path(root, medium, &slug);
+    let mut doc = read_doc(&path)?;
+
+    let block = build_block(date, tags, body);
     let existing = doc.get("notes").and_then(|i| i.as_str()).unwrap_or("");
     let updated = if existing.trim().is_empty() {
         format!("{block}\n")
@@ -199,10 +229,47 @@ pub fn append_note(root: &Path, id: &str, date: &str, tags: &[String], body: &st
         format!("{}\n\n{}\n", existing.trim_end(), block)
     };
 
-    // Assigning a plain string lets toml_edit choose a multi-line `"""` repr
-    // for us (see the notes in store/tests); the trailing newline keeps the
-    // closing delimiter on its own line.
     doc["notes"] = value(updated);
+    write_doc(&path, &doc)?;
+    Ok(entry_from_doc(medium, &slug, &doc))
+}
+
+/// Replace the note block at `index` with a rebuilt one; other blocks and the
+/// rest of the file are preserved.
+pub fn edit_note(
+    root: &Path,
+    id: &str,
+    index: usize,
+    date: &str,
+    tags: &[String],
+    body: &str,
+) -> Result<Entry> {
+    let (medium, slug) = parse_id(id)?;
+    let path = entry_path(root, medium, &slug);
+    let mut doc = read_doc(&path)?;
+
+    let mut blocks = split_blocks(doc.get("notes").and_then(|i| i.as_str()).unwrap_or(""));
+    if index >= blocks.len() {
+        return Err(anyhow!("note {index} does not exist"));
+    }
+    blocks[index] = build_block(date, tags, body);
+    write_blocks(&mut doc, &blocks);
+    write_doc(&path, &doc)?;
+    Ok(entry_from_doc(medium, &slug, &doc))
+}
+
+/// Delete the note block at `index`.
+pub fn delete_note(root: &Path, id: &str, index: usize) -> Result<Entry> {
+    let (medium, slug) = parse_id(id)?;
+    let path = entry_path(root, medium, &slug);
+    let mut doc = read_doc(&path)?;
+
+    let mut blocks = split_blocks(doc.get("notes").and_then(|i| i.as_str()).unwrap_or(""));
+    if index >= blocks.len() {
+        return Err(anyhow!("note {index} does not exist"));
+    }
+    blocks.remove(index);
+    write_blocks(&mut doc, &blocks);
     write_doc(&path, &doc)?;
     Ok(entry_from_doc(medium, &slug, &doc))
 }

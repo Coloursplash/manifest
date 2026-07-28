@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Cover } from "../components/Cover";
+import { IconClose, IconSearch } from "../components/icons";
 import { appendNote, createEntry, patchEntry, searchMetadata } from "../lib/api";
 import { todayISO } from "../lib/notes";
 import {
@@ -114,8 +115,12 @@ export function AddEntryModal({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <h3>Add to library</h3>
-          <button className="btn btn--ghost" onClick={onClose}>
-            Close
+          <button
+            className="btn btn--ghost btn--icon-sm"
+            onClick={onClose}
+            title="Close"
+          >
+            <IconClose />
           </button>
         </div>
 
@@ -171,8 +176,13 @@ export function AddEntryModal({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={`Search ${MEDIUM_LABEL[medium].toLowerCase()}…`}
               />
-              <button className="btn btn--lg" type="submit" disabled={loading}>
-                {loading ? "…" : "Search"}
+              <button
+                className="btn btn--lg"
+                type="submit"
+                disabled={loading}
+                title="Search"
+              >
+                {loading ? "…" : <IconSearch size={18} />}
               </button>
             </form>
 

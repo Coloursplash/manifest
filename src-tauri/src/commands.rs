@@ -86,6 +86,27 @@ fn append_note(
     store::append_note(&root, &id, &date, &tags, &body).map_err(err)
 }
 
+/// Replace an existing note block (by index) with edited content.
+#[tauri::command]
+fn update_note(
+    state: State<AppState>,
+    id: String,
+    index: usize,
+    date: String,
+    tags: Vec<String>,
+    body: String,
+) -> Result<Entry, String> {
+    let root = state.library_root().map_err(err)?;
+    store::edit_note(&root, &id, index, &date, &tags, &body).map_err(err)
+}
+
+/// Delete a note block by index.
+#[tauri::command]
+fn delete_note(state: State<AppState>, id: String, index: usize) -> Result<Entry, String> {
+    let root = state.library_root().map_err(err)?;
+    store::delete_note(&root, &id, index).map_err(err)
+}
+
 /// Set/clear arbitrary top-level fields (progress, dates, status, rating,
 /// tags). A `null` value removes the key.
 #[tauri::command]
@@ -214,6 +235,8 @@ pub fn handlers() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sy
         list_entries,
         get_entry,
         append_note,
+        update_note,
+        delete_note,
         patch_entry,
         set_status,
         create_entry,

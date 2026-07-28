@@ -49,6 +49,9 @@ async fn open_library(query: &str) -> Result<Vec<Candidate>> {
         if let Some(a) = &author {
             fields.insert("author".into(), a.clone().into());
         }
+        if let Some(publisher) = d.pointer("/publisher/0").and_then(|v| v.as_str()) {
+            fields.insert("publisher".into(), publisher.into());
+        }
         if let Some(pages) = d.get("number_of_pages_median").and_then(|v| v.as_i64()) {
             fields.insert("pages".into(), pages.into());
         }
@@ -112,6 +115,9 @@ async fn google_books(query: &str) -> Result<Vec<Candidate>> {
         let mut fields = serde_json::Map::new();
         if let Some(a) = &author {
             fields.insert("author".into(), a.clone().into());
+        }
+        if let Some(publisher) = info.get("publisher").and_then(|v| v.as_str()) {
+            fields.insert("publisher".into(), publisher.into());
         }
         if let Some(pages) = info.get("pageCount").and_then(|v| v.as_i64()) {
             fields.insert("pages".into(), pages.into());

@@ -29,6 +29,17 @@ export const appendNote = (
   body: string,
 ) => invoke<Entry>("append_note", { id, date, tags, body });
 
+export const updateNote = (
+  id: string,
+  index: number,
+  date: string,
+  tags: string[],
+  body: string,
+) => invoke<Entry>("update_note", { id, index, date, tags, body });
+
+export const deleteNote = (id: string, index: number) =>
+  invoke<Entry>("delete_note", { id, index });
+
 export const setStatus = (id: string, status: Status | null) =>
   invoke<Entry>("set_status", { id, status });
 

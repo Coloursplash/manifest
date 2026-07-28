@@ -8,6 +8,8 @@ import {
 } from "./lib/api";
 import { MEDIA, MEDIUM_LABEL, type Entry, type Medium } from "./lib/types";
 import { applyTheme, getTheme, type Theme } from "./lib/theme";
+import { applyAccent, getAccent } from "./lib/accent";
+import { IconPlus, IconSettings } from "./components/icons";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
 import { EntryDetail } from "./views/EntryDetail";
@@ -29,11 +31,15 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState<Theme>(getTheme());
+  const [accent, setAccent] = useState<string>(getAccent());
 
-  function toggleTheme() {
-    const next: Theme = theme === "dark" ? "light" : "dark";
-    applyTheme(next);
-    setTheme(next);
+  function changeTheme(t: Theme) {
+    applyTheme(t);
+    setTheme(t);
+  }
+  function changeAccent(hex: string) {
+    applyAccent(hex);
+    setAccent(hex);
   }
 
   const reload = useCallback(async () => {
@@ -102,9 +108,12 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <span className="wordmark">
-          manifest<span className="dotmark">.</span>
-        </span>
+        <div className="brand">
+          <div className="brand__name">
+            MANIFEST<span className="dotmark">.</span>
+          </div>
+          <div className="brand__spec">マニフェスト</div>
+        </div>
         <div className="tabs">
           <button
             className={`tab ${filterMedium === null ? "tab--on" : ""}`}
@@ -130,21 +139,14 @@ export default function App() {
           placeholder="Search library…"
         />
         <button className="btn btn--accent btn--lg" onClick={() => setShowAdd(true)}>
-          + Add
-        </button>
-        <button
-          className="btn btn--icon"
-          onClick={toggleTheme}
-          title="Toggle light / dark"
-        >
-          {theme === "dark" ? "☀" : "☽"}
+          <IconPlus size={16} /> Add
         </button>
         <button
           className="btn btn--icon"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
-          ⚙
+          <IconSettings />
         </button>
       </div>
 
@@ -186,11 +188,13 @@ export default function App() {
 
       {showSettings && (
         <SettingsModal
+          theme={theme}
+          onTheme={changeTheme}
+          accent={accent}
+          onAccent={changeAccent}
+          hasKey={hasKey}
+          onKeyChanged={() => hasTmdbKey().then(setHasKey)}
           onClose={() => setShowSettings(false)}
-          onSaved={() => {
-            hasTmdbKey().then(setHasKey);
-            setShowSettings(false);
-          }}
         />
       )}
     </div>

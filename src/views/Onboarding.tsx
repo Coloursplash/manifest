@@ -23,8 +23,11 @@ export function Onboarding({ onChosen }: { onChosen: (path: string) => void }) {
   return (
     <div className="center">
       <div className="panel">
-        <div className="wordmark" style={{ marginBottom: 18 }}>
-          manifest<span className="dotmark">.</span>
+        <div className="brand" style={{ marginBottom: 20 }}>
+          <div className="brand__name">
+            MANIFEST<span className="dotmark">.</span>
+          </div>
+          <div className="brand__spec">マニフェスト</div>
         </div>
         <h2>Choose a library folder</h2>
         <p>

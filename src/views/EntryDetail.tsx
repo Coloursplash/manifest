@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Cover } from "../components/Cover";
-import { appendNote, deleteEntry, patchEntry } from "../lib/api";
-import { parseNotes, todayISO } from "../lib/notes";
+import { IconBack, IconClose, IconEdit, IconTrash } from "../components/icons";
+import {
+  appendNote,
+  deleteEntry,
+  deleteNote,
+  patchEntry,
+  updateNote,
+} from "../lib/api";
+import { parseNotes, todayISO, type NoteBlock } from "../lib/notes";
 import {
   MEDIUM_LABEL,
   PROGRESS,
   STATUSES,
   statusLabel,
   type Entry,
+  type Medium,
   type Status,
 } from "../lib/types";
 
@@ -27,6 +35,7 @@ export function EntryDetail({
   const totalKey = shape.totalKey;
   const totalRaw = totalKey ? entry.extra?.[totalKey] : undefined;
   const total = typeof totalRaw === "number" ? totalRaw : undefined;
+  const creator = creatorOf(entry);
 
   const blocks = useMemo(() => parseNotes(entry.notes), [entry.notes]);
   const [busy, setBusy] = useState(false);
@@ -51,12 +60,7 @@ export function EntryDetail({
   }
 
   async function chooseStatus(s: Status) {
-    const next = entry.status === s ? null : s; // click active status to clear
-    await patch({ status: next });
-  }
-
-  async function chooseRating(n: number) {
-    await patch({ rating: entry.rating === n ? null : n }); // click same to clear
+    await patch({ status: entry.status === s ? null : s });
   }
 
   async function remove() {
@@ -65,7 +69,6 @@ export function EntryDetail({
     if (done !== undefined) onDeleted();
   }
 
-  // meta fields = everything in `extra` except the progress total (shown above)
   const extraEntries = Object.entries(entry.extra ?? {}).filter(
     ([k, v]) => k !== totalKey && v !== null && v !== undefined && `${v}` !== "",
   );
@@ -74,11 +77,11 @@ export function EntryDetail({
     <div>
       <div className="row" style={{ marginBottom: 20 }}>
         <button className="btn btn--ghost" onClick={onBack}>
-          ← Library
+          <IconBack size={16} /> Library
         </button>
         <div className="topbar__spacer" />
-        <button className="btn btn--ghost" onClick={remove} disabled={busy}>
-          Trash
+        <button className="btn btn--ghost btn--dim" onClick={remove} disabled={busy}>
+          <IconTrash size={16} /> Trash
         </button>
       </div>
 
@@ -99,12 +102,13 @@ export function EntryDetail({
         <div>
           <h1 className="detail__title">{entry.title}</h1>
           <div className="detail__sub">
-            {MEDIUM_LABEL[entry.medium]}
-            {entry.year ? ` · ${entry.year}` : ""}
+            {[MEDIUM_LABEL[entry.medium], creator, entry.year ? `${entry.year}` : null]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
 
           {/* status */}
-          <div className="tabs" style={{ marginBottom: 12 }}>
+          <div className="tabs" style={{ marginBottom: 14 }}>
             {STATUSES.map((s) => (
               <button
                 key={s}
@@ -118,20 +122,22 @@ export function EntryDetail({
             ))}
           </div>
 
-          {/* rating */}
-          <div className="stars" title="Rating">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <span
-                key={n}
-                className={`star ${(entry.rating ?? 0) >= n ? "star--on" : ""}`}
-                onClick={() => chooseRating(n)}
-              >
-                {(entry.rating ?? 0) >= n ? "★" : "☆"}
-              </span>
-            ))}
-          </div>
+          {/* rating: 5 half-fillable circles = /10 */}
+          <RatingCircles value={entry.rating} onSet={(n) => patch({ rating: n })} />
 
-          {/* progress (skipped for single-sitting media like film) */}
+          {/* details first — author etc. matter more than how far in you are */}
+          {extraEntries.length > 0 && (
+            <div className="section">
+              <div className="section__label">Details</div>
+              <dl className="meta-table">
+                {extraEntries.map(([k, v]) => (
+                  <FieldRow key={k} label={k} value={v} />
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {/* progress */}
           {!shape.single && (
             <div className="section">
               <div className="section__label">Progress</div>
@@ -165,7 +171,7 @@ export function EntryDetail({
                         className="progress__num"
                       />
                       <span className="progress__total">
-                        {total ? `/ ${total} ${shape.unit}s` : shape.unit + "s in"}
+                        {total ? `/ ${total} ${shape.unit}s` : `${shape.unit}s in`}
                       </span>
                     </div>
                     {total && (
@@ -184,22 +190,33 @@ export function EntryDetail({
             </div>
           )}
 
-          {/* metadata */}
-          {(extraEntries.length > 0 || entry.rating != null) && (
-            <dl className="meta-table">
-              {entry.rating != null && (
-                <>
-                  <dt>Rating</dt>
-                  <dd>{entry.rating}</dd>
-                </>
+          {/* log */}
+          <div className="notes">
+            <div className="section__label">Log</div>
+            <NoteEditor
+              medium={entry.medium}
+              mode="add"
+              initial={{ date: todayISO(), tags: [], body: "" }}
+              onSubmit={async (d, t, b) => onChanged(await appendNote(entry.id, d, t, b))}
+            />
+            <div style={{ marginTop: 20 }}>
+              {blocks.length === 0 && (
+                <p className="muted" style={{ fontSize: "0.8rem" }}>
+                  Nothing logged yet.
+                </p>
               )}
-              {extraEntries.map(([k, v]) => (
-                <FieldRow key={k} label={k} value={v} />
+              {blocks.map((b, i) => (
+                <NoteItem
+                  key={i}
+                  entry={entry}
+                  block={b}
+                  index={i}
+                  onChanged={onChanged}
+                />
               ))}
-            </dl>
-          )}
+            </div>
+          </div>
 
-          <LogForm entry={entry} blocks={blocks} onChanged={onChanged} />
           {error && <p className="error">{error}</p>}
         </div>
       </div>
@@ -207,25 +224,169 @@ export function EntryDetail({
   );
 }
 
-// --- the notes log + logging form ---
+// --- rating: five half-fillable circles = /10 ---
 
-function LogForm({
+function RatingCircles({
+  value,
+  onSet,
+}: {
+  value?: number;
+  onSet: (n: number | null) => void;
+}) {
+  const v = Math.round(value ?? 0);
+  const [hover, setHover] = useState<number | null>(null);
+  const shown = hover ?? v; // preview while hovering
+
+  // Which /10 value a click at this x lands on (left half = half point).
+  function valueAt(i: number, e: React.MouseEvent<HTMLButtonElement>): number {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const leftHalf = e.clientX - rect.left < rect.width / 2;
+    return (i - 1) * 2 + (leftHalf ? 1 : 2);
+  }
+
+  return (
+    <div className="rating" onMouseLeave={() => setHover(null)}>
+      <span className="label">Rating</span>
+      <div className="rcircles">
+        {[1, 2, 3, 4, 5].map((i) => {
+          const fill = Math.max(0, Math.min(1, (shown - (i - 1) * 2) / 2));
+          const cls = fill >= 1 ? "rcirc--full" : fill > 0 ? "rcirc--half" : "";
+          return (
+            <button
+              key={i}
+              className={`rcirc ${cls} ${hover !== null ? "rcirc--preview" : ""}`}
+              onMouseMove={(e) => setHover(valueAt(i, e))}
+              onClick={(e) => onSet(valueAt(i, e))}
+            />
+          );
+        })}
+      </div>
+      <span className={`rating__value ${hover !== null ? "rating__value--preview" : ""}`}>
+        {shown || "—"}
+        <span className="rating__max">/10</span>
+      </span>
+      {v > 0 && (
+        <button
+          className="btn btn--ghost btn--icon-sm btn--dim"
+          onClick={() => onSet(null)}
+          title="Clear rating"
+        >
+          <IconClose size={15} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The primary creator for a medium (author / director / studio), from `extra`. */
+function creatorOf(entry: Entry): string | undefined {
+  const e = entry.extra ?? {};
+  const pick = (k: string) =>
+    typeof e[k] === "string" && (e[k] as string).trim() ? (e[k] as string) : undefined;
+  switch (entry.medium) {
+    case "film":
+      return pick("director");
+    case "book":
+    case "manga":
+      return pick("author");
+    case "tv":
+    case "anime":
+      return pick("studio") ?? pick("creator");
+  }
+}
+
+// --- one log entry, with inline edit/delete ---
+
+function NoteItem({
   entry,
-  blocks,
+  block,
+  index,
   onChanged,
 }: {
   entry: Entry;
-  blocks: ReturnType<typeof parseNotes>;
+  block: NoteBlock;
+  index: number;
   onChanged: (e: Entry) => void;
 }) {
-  const reread = entry.medium === "book" || entry.medium === "manga";
+  const [editing, setEditing] = useState(false);
+
+  async function del() {
+    if (!confirm("Delete this log entry?")) return;
+    onChanged(await deleteNote(entry.id, index));
+  }
+
+  if (editing) {
+    return (
+      <NoteEditor
+        medium={entry.medium}
+        mode="edit"
+        initial={{ date: block.date || todayISO(), tags: block.tags, body: block.body }}
+        onSubmit={async (d, t, b) => {
+          onChanged(await updateNote(entry.id, index, d, t, b));
+          setEditing(false);
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <div className={`note-block ${block.body ? "" : "note-block--bare"}`}>
+      <div className="note-block__head">
+        {block.date && <span className="note-block__date">{block.date}</span>}
+        {block.rest && (
+          <span className="muted" style={{ fontSize: "0.72rem" }}>{block.rest}</span>
+        )}
+        {block.tags.map((t) => (
+          <span className="tag" key={t}>
+            {t}
+          </span>
+        ))}
+        <div className="note-block__actions">
+          <button
+            className="btn btn--ghost btn--icon-sm btn--dim"
+            onClick={() => setEditing(true)}
+            title="Edit"
+          >
+            <IconEdit size={15} />
+          </button>
+          <button
+            className="btn btn--ghost btn--icon-sm btn--dim"
+            onClick={del}
+            title="Delete"
+          >
+            <IconTrash size={15} />
+          </button>
+        </div>
+      </div>
+      {block.body && <div className="note-block__body">{block.body}</div>}
+    </div>
+  );
+}
+
+// --- shared editor for adding + editing a log entry ---
+
+function NoteEditor({
+  medium,
+  mode,
+  initial,
+  onSubmit,
+  onCancel,
+}: {
+  medium: Medium;
+  mode: "add" | "edit";
+  initial: { date: string; tags: string[]; body: string };
+  onSubmit: (date: string, tags: string[], body: string) => Promise<void>;
+  onCancel?: () => void;
+}) {
+  const reread = medium === "book" || medium === "manga";
   const repeatTag = reread ? "reread" : "rewatch";
   const verb = reread ? "read" : "watched";
 
-  const [date, setDate] = useState(todayISO());
-  const [tags, setTags] = useState<string[]>([]);
+  const [date, setDate] = useState(initial.date);
+  const [tags, setTags] = useState<string[]>(initial.tags);
   const [tagInput, setTagInput] = useState("");
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initial.body);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -238,14 +399,17 @@ function LogForm({
     setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t]);
   }
 
-  async function log() {
+  async function submit() {
     setBusy(true);
     setError(null);
     try {
-      const updated = await appendNote(entry.id, date.trim(), tags, body.trim());
-      onChanged(updated);
-      setBody("");
-      setTags([]);
+      await onSubmit(date.trim(), tags, body.trim());
+      if (mode === "add") {
+        setDate(todayISO());
+        setTags([]);
+        setTagInput("");
+        setBody("");
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -253,98 +417,70 @@ function LogForm({
     }
   }
 
+  const submitLabel =
+    mode === "edit" ? "Save" : body.trim() ? "Log with note" : `Just ${verb} it`;
+
   return (
-    <div className="notes">
-      <div className="section__label">Log</div>
-
-      {blocks.length === 0 && (
-        <p className="muted" style={{ fontSize: "0.8rem" }}>
-          Nothing logged yet.
-        </p>
-      )}
-      {blocks.map((b, i) => (
-        <div
-          className={`note-block ${b.body ? "" : "note-block--bare"}`}
-          key={i}
-        >
-          <div className="note-block__head">
-            {b.date && <span className="note-block__date">{b.date}</span>}
-            {b.rest && <span className="muted" style={{ fontSize: "0.72rem" }}>{b.rest}</span>}
-            {b.tags.map((t) => (
-              <span className="tag" key={t}>
-                {t}
-              </span>
-            ))}
-          </div>
-          {b.body && <div className="note-block__body">{b.body}</div>}
-        </div>
-      ))}
-
-      <div className="stack" style={{ marginTop: 18 }}>
-        <div className="row wrap">
-          <input
-            className="input"
-            style={{ width: 160 }}
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-          <button
-            type="button"
-            className={`chip ${tags.includes(repeatTag) ? "chip--on" : ""}`}
-            onClick={() => toggleTag(repeatTag)}
-          >
-            #{repeatTag}
-          </button>
-          {tags
-            .filter((t) => t !== repeatTag)
-            .map((t) => (
-              <span
-                className="tag tag--removable"
-                key={t}
-                onClick={() => toggleTag(t)}
-                title="remove"
-              >
-                #{t} ✕
-              </span>
-            ))}
-          <input
-            className="input"
-            style={{ width: 130 }}
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === ",") {
-                e.preventDefault();
-                addTag(tagInput);
-              }
-            }}
-            placeholder="+ tag"
-          />
-        </div>
-
-        <textarea
-          className="textarea"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Thoughts (optional)"
+    <div className="note-editor stack">
+      <div className="row wrap">
+        <input
+          className="input"
+          style={{ width: 160 }}
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
         />
-
-        <div className="row">
-          <button
-            className="btn btn--accent btn--lg"
-            onClick={() => log()}
-            disabled={busy}
-            title={
-              body.trim()
-                ? "Log this date with your note"
-                : `Just record that you ${verb} it on this date`
+        <button
+          type="button"
+          className={`chip ${tags.includes(repeatTag) ? "chip--on" : ""}`}
+          onClick={() => toggleTag(repeatTag)}
+        >
+          #{repeatTag}
+        </button>
+        {tags
+          .filter((t) => t !== repeatTag)
+          .map((t) => (
+            <span
+              className="tag tag--removable"
+              key={t}
+              onClick={() => toggleTag(t)}
+              title="remove"
+            >
+              #{t} ✕
+            </span>
+          ))}
+        <input
+          className="input"
+          style={{ width: 130 }}
+          value={tagInput}
+          onChange={(e) => setTagInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              addTag(tagInput);
             }
-          >
-            {body.trim() ? "Log with note" : `Just ${verb} it`}
+          }}
+          placeholder="+ tag"
+        />
+      </div>
+
+      <textarea
+        className="textarea"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Thoughts (optional)"
+      />
+
+      <div className="row">
+        <button className="btn btn--accent btn--lg" onClick={submit} disabled={busy}>
+          {submitLabel}
+        </button>
+        {onCancel && (
+          <button className="btn" onClick={onCancel} disabled={busy}>
+            Cancel
           </button>
-          {error && <span className="error">{error}</span>}
-        </div>
+        )}
+        {error && <span className="error">{error}</span>}
       </div>
     </div>
   );
