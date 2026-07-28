@@ -6,9 +6,10 @@ import {
   listEntries,
   onLibraryChanged,
 } from "./lib/api";
-import { MEDIA, MEDIUM_LABEL, type Entry, type Medium } from "./lib/types";
+import { MEDIUM_LABEL, type Entry, type Medium } from "./lib/types";
 import { applyTheme, getTheme, type Theme } from "./lib/theme";
 import { applyAccent, getAccent } from "./lib/accent";
+import { getEnabledMedia, saveEnabledMedia } from "./lib/media";
 import { IconPlus, IconSettings } from "./components/icons";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
@@ -32,6 +33,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState<Theme>(getTheme());
   const [accent, setAccent] = useState<string>(getAccent());
+  const [enabledMedia, setEnabledMedia] = useState<Medium[]>(getEnabledMedia());
 
   function changeTheme(t: Theme) {
     applyTheme(t);
@@ -40,6 +42,16 @@ export default function App() {
   function changeAccent(hex: string) {
     applyAccent(hex);
     setAccent(hex);
+  }
+  function toggleMedium(m: Medium) {
+    const on = enabledMedia.includes(m);
+    if (on && enabledMedia.length === 1) return; // keep at least one enabled
+    const nextSet = on
+      ? enabledMedia.filter((x) => x !== m)
+      : [...enabledMedia, m];
+    setEnabledMedia(saveEnabledMedia(nextSet));
+    // If we just hid the medium currently filtered, fall back to All.
+    if (on && filterMedium === m) setFilterMedium(null);
   }
 
   const reload = useCallback(async () => {
@@ -121,7 +133,7 @@ export default function App() {
           >
             All
           </button>
-          {MEDIA.map((m) => (
+          {enabledMedia.map((m) => (
             <button
               key={m}
               className={`tab ${filterMedium === m ? "tab--on" : ""}`}
@@ -131,23 +143,27 @@ export default function App() {
             </button>
           ))}
         </div>
-        <div className="topbar__spacer" />
-        <input
-          className="input topbar__search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search library…"
-        />
-        <button className="btn btn--accent btn--lg" onClick={() => setShowAdd(true)}>
-          <IconPlus size={16} /> Add
-        </button>
-        <button
-          className="btn btn--icon"
-          onClick={() => setShowSettings(true)}
-          title="Settings"
-        >
-          <IconSettings />
-        </button>
+        <div className="topbar__actions">
+          <input
+            className="input topbar__search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search library…"
+          />
+          <button
+            className="btn btn--accent btn--lg"
+            onClick={() => setShowAdd(true)}
+          >
+            <IconPlus size={16} /> Add
+          </button>
+          <button
+            className="btn btn--icon"
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+          >
+            <IconSettings />
+          </button>
+        </div>
       </div>
 
       <div className="content">
@@ -177,6 +193,8 @@ export default function App() {
       {showAdd && (
         <AddEntryModal
           hasKey={hasKey}
+          enabledMedia={enabledMedia}
+          initialMedium={filterMedium}
           onClose={() => setShowAdd(false)}
           onNeedKey={() => {
             setShowAdd(false);
@@ -192,6 +210,8 @@ export default function App() {
           onTheme={changeTheme}
           accent={accent}
           onAccent={changeAccent}
+          enabledMedia={enabledMedia}
+          onToggleMedium={toggleMedium}
           hasKey={hasKey}
           onKeyChanged={() => hasTmdbKey().then(setHasKey)}
           onClose={() => setShowSettings(false)}

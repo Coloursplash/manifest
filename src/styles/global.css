@@ -372,11 +372,21 @@ input[type="date"] {
 .topbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 18px;
+  row-gap: 12px;
   padding: 14px 22px;
   background: var(--panel);
   border-top: 3px solid var(--accent);
   border-bottom: 2px solid var(--line-2);
+}
+/* Search + actions cluster: hugs the right edge, and drops to its own line
+   as a unit only when the row can't hold everything. */
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 
 /* --- brand plate --- */
@@ -560,9 +570,22 @@ input[type="date"] {
   max-width: 940px;
   margin: 0 auto;
 }
-.detail__cover {
+/* sticky action bar so Library/Trash stay reachable while scrolling */
+.detail__bar {
   position: sticky;
   top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  padding: 6px 0 12px;
+  margin-bottom: 16px;
+  border-bottom: 1.5px solid var(--line);
+}
+.detail__cover {
+  position: sticky;
+  top: 76px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -777,6 +800,13 @@ input[type="date"] {
   padding: 14px;
   background: var(--panel);
   margin-bottom: 18px;
+}
+/* editing an existing entry is visually distinct from composing a new one */
+.note-editor--edit {
+  border-color: var(--accent);
+}
+.note-editor__head {
+  color: var(--accent);
 }
 .note-block--bare {
   border-left-color: var(--line-2);

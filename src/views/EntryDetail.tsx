@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Cover } from "../components/Cover";
-import { IconBack, IconClose, IconEdit, IconTrash } from "../components/icons";
+import { IconBack, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
 import {
   appendNote,
   deleteEntry,
@@ -40,6 +40,8 @@ export function EntryDetail({
   const blocks = useMemo(() => parseNotes(entry.notes), [entry.notes]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const logVerb = entry.medium === "book" || entry.medium === "manga" ? "read" : "watch";
 
   async function guard<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true);
@@ -75,7 +77,7 @@ export function EntryDetail({
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: 20 }}>
+      <div className="detail__bar">
         <button className="btn btn--ghost" onClick={onBack}>
           <IconBack size={16} /> Library
         </button>
@@ -193,12 +195,24 @@ export function EntryDetail({
           {/* log */}
           <div className="notes">
             <div className="section__label">Log</div>
-            <NoteEditor
-              medium={entry.medium}
-              mode="add"
-              initial={{ date: todayISO(), tags: [], body: "" }}
-              onSubmit={async (d, t, b) => onChanged(await appendNote(entry.id, d, t, b))}
-            />
+
+            {composing ? (
+              <NoteEditor
+                medium={entry.medium}
+                mode="add"
+                initial={{ date: todayISO(), tags: [], body: "" }}
+                onSubmit={async (d, t, b) => {
+                  onChanged(await appendNote(entry.id, d, t, b));
+                  setComposing(false);
+                }}
+                onCancel={() => setComposing(false)}
+              />
+            ) : (
+              <button className="btn btn--accent" onClick={() => setComposing(true)}>
+                <IconPlus size={16} /> Log a {logVerb}
+              </button>
+            )}
+
             <div style={{ marginTop: 20 }}>
               {blocks.length === 0 && (
                 <p className="muted" style={{ fontSize: "0.8rem" }}>
@@ -421,7 +435,8 @@ function NoteEditor({
     mode === "edit" ? "Save" : body.trim() ? "Log with note" : `Just ${verb} it`;
 
   return (
-    <div className="note-editor stack">
+    <div className={`note-editor stack ${mode === "edit" ? "note-editor--edit" : ""}`}>
+      {mode === "edit" && <div className="note-editor__head label">Editing entry</div>}
       <div className="row wrap">
         <input
           className="input"

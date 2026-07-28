@@ -3,6 +3,7 @@ import { useState } from "react";
 import { IconClose } from "../components/icons";
 import { setTmdbKey } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
+import { MEDIA, MEDIUM_LABEL, type Medium } from "../lib/types";
 import type { Theme } from "../lib/theme";
 
 export function SettingsModal({
@@ -10,6 +11,8 @@ export function SettingsModal({
   onTheme,
   accent,
   onAccent,
+  enabledMedia,
+  onToggleMedium,
   hasKey,
   onKeyChanged,
   onClose,
@@ -18,6 +21,8 @@ export function SettingsModal({
   onTheme: (t: Theme) => void;
   accent: string;
   onAccent: (hex: string) => void;
+  enabledMedia: Medium[];
+  onToggleMedium: (m: Medium) => void;
   hasKey: boolean;
   onKeyChanged: () => void;
   onClose: () => void;
@@ -106,6 +111,32 @@ export function SettingsModal({
                 />
               </label>
             </div>
+          </div>
+        </div>
+
+        {/* Media types */}
+        <div className="section">
+          <div className="section__label">Media types</div>
+          <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
+            Choose which categories show up in the header and the Add flow. Hidden
+            types stay on disk untouched — this only tidies the UI.
+          </p>
+          <div className="tabs">
+            {MEDIA.map((m) => {
+              const on = enabledMedia.includes(m);
+              const last = on && enabledMedia.length === 1;
+              return (
+                <button
+                  key={m}
+                  className={`tab ${on ? "tab--on" : ""}`}
+                  onClick={() => onToggleMedium(m)}
+                  disabled={last}
+                  title={last ? "Keep at least one type enabled" : undefined}
+                >
+                  {MEDIUM_LABEL[m]}
+                </button>
+              );
+            })}
           </div>
         </div>
 

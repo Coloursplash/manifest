@@ -5,7 +5,6 @@ import { IconClose, IconSearch } from "../components/icons";
 import { appendNote, createEntry, patchEntry, searchMetadata } from "../lib/api";
 import { todayISO } from "../lib/notes";
 import {
-  MEDIA,
   MEDIUM_LABEL,
   statusLabel,
   type Candidate,
@@ -33,16 +32,24 @@ async function finalize(entry: Entry, status: Status): Promise<Entry> {
 
 export function AddEntryModal({
   hasKey,
+  enabledMedia,
+  initialMedium,
   onClose,
   onCreated,
   onNeedKey,
 }: {
   hasKey: boolean;
+  enabledMedia: Medium[];
+  /** The active header filter. When set, the modal opens locked to it and
+   *  hides its own category picker; when null ("All") it shows the picker. */
+  initialMedium: Medium | null;
   onClose: () => void;
   onCreated: (e: Entry) => void;
   onNeedKey: () => void;
 }) {
-  const [medium, setMedium] = useState<Medium>("film");
+  const [medium, setMedium] = useState<Medium>(
+    initialMedium ?? enabledMedia[0],
+  );
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Candidate[]>([]);
   const [searched, setSearched] = useState(false);
@@ -114,7 +121,11 @@ export function AddEntryModal({
     <div className="scrim" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h3>Add to library</h3>
+          <h3>
+            {initialMedium
+              ? `Add ${MEDIUM_LABEL[medium]} to library`
+              : "Add to library"}
+          </h3>
           <button
             className="btn btn--ghost btn--icon-sm"
             onClick={onClose}
@@ -124,17 +135,21 @@ export function AddEntryModal({
           </button>
         </div>
 
-        <div className="tabs" style={{ marginBottom: 16 }}>
-          {MEDIA.map((m) => (
-            <button
-              key={m}
-              className={`tab ${medium === m ? "tab--on" : ""}`}
-              onClick={() => switchMedium(m)}
-            >
-              {MEDIUM_LABEL[m]}
-            </button>
-          ))}
-        </div>
+        {/* On "All", pick the type here; from a specific category the heading
+            already names it, so no picker is shown. */}
+        {initialMedium === null && (
+          <div className="tabs" style={{ marginBottom: 16 }}>
+            {enabledMedia.map((m) => (
+              <button
+                key={m}
+                className={`tab ${medium === m ? "tab--on" : ""}`}
+                onClick={() => switchMedium(m)}
+              >
+                {MEDIUM_LABEL[m]}
+              </button>
+            ))}
+          </div>
+        )}
 
         {needsKey ? (
           <div className="stack">
