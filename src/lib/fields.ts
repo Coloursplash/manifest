@@ -7,6 +7,7 @@ const FIELD_LABELS: Record<string, string> = {
   community_score: "Community score",
   episode_duration: "Episode length",
   season_premiere: "Premiere",
+  metacritic: "Metacritic",
 };
 
 export function humanizeLabel(key: string): string {
@@ -18,7 +19,7 @@ export function humanizeLabel(key: string): string {
 
 export function formatValue(key: string, value: unknown): string {
   if (Array.isArray(value)) return value.map(String).join(", ");
-  if (key === "community_score" && typeof value === "number") {
+  if ((key === "community_score" || key === "metacritic") && typeof value === "number") {
     return `${value} / 100`;
   }
   if ((key === "runtime" || key === "episode_duration") && typeof value === "number") {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { IconClose } from "../components/icons";
-import { setTmdbKey } from "../lib/api";
+import { setRawgKey, setTmdbKey } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
 import { MEDIA, MEDIUM_LABEL, type Medium } from "../lib/types";
 import type { Theme } from "../lib/theme";
@@ -16,6 +16,8 @@ export function SettingsModal({
   onRefreshAll,
   hasKey,
   onKeyChanged,
+  hasRawgKey,
+  onRawgKeyChanged,
   onClose,
 }: {
   theme: Theme;
@@ -29,13 +31,10 @@ export function SettingsModal({
   ) => Promise<{ updated: number; failed: number; total: number }>;
   hasKey: boolean;
   onKeyChanged: () => void;
+  hasRawgKey: boolean;
+  onRawgKeyChanged: () => void;
   onClose: () => void;
 }) {
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-
   const [refreshing, setRefreshing] = useState<{ done: number; total: number } | null>(
     null,
   );
@@ -53,22 +52,6 @@ export function SettingsModal({
         : `Refreshed ${res.updated} of ${res.total}` +
             (res.failed ? ` · ${res.failed} had no confident match.` : "."),
     );
-  }
-
-  async function save(clear = false) {
-    setBusy(true);
-    setError(null);
-    setNote(null);
-    try {
-      await setTmdbKey(clear ? "" : key.trim());
-      setKey("");
-      onKeyChanged();
-      setNote(clear ? "Key cleared." : "Key saved.");
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
   }
 
   const isCustom = !ACCENT_PRESETS.includes(accent.toLowerCase());
@@ -193,63 +176,121 @@ export function SettingsModal({
         </div>
 
         {/* TMDB */}
-        <div className="section">
-          <div className="section__label">TMDB API key</div>
-          <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
-            Enables film and TV search (free from themoviedb.org). Stored locally
-            in manifest's config, never in your library. Anime, manga, and books
-            need no key.
-          </p>
+        <ApiKeyField
+          label="TMDB API key"
+          blurb="Enables film and TV search (free from themoviedb.org). Stored locally in manifest's config, never in your library. Anime, manga, music, and books need no key."
+          placeholder="Paste your TMDB API key"
+          hasKey={hasKey}
+          onSave={setTmdbKey}
+          onChanged={onKeyChanged}
+        />
 
-          {hasKey ? (
-            // A key exists: show it's set (masked) and require clearing to change.
-            <div className="keyfield">
-              <input
-                className="input"
-                value="••••••••••••••••"
-                disabled
-                aria-label="TMDB key is set"
-              />
-              <button
-                className="keyfield__x btn btn--ghost btn--icon-sm btn--dim"
-                onClick={() => save(true)}
-                disabled={busy}
-                title="Remove key"
-              >
-                <IconClose size={16} />
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                className="input"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="Paste your TMDB API key"
-                type="password"
-              />
-              <div className="row" style={{ marginTop: 14 }}>
-                <button
-                  className="btn btn--accent"
-                  onClick={() => save(false)}
-                  disabled={busy || !key.trim()}
-                >
-                  Save
-                </button>
-              </div>
-            </>
-          )}
-
-          {(note || error) && (
-            <p
-              className={error ? "error" : "muted"}
-              style={{ marginTop: 10, fontSize: "0.78rem" }}
-            >
-              {error || note}
-            </p>
-          )}
-        </div>
+        {/* RAWG */}
+        <ApiKeyField
+          label="RAWG API key"
+          blurb="Enables videogame search (free from rawg.io/apidocs). Stored locally in manifest's config, never in your library."
+          placeholder="Paste your RAWG API key"
+          hasKey={hasRawgKey}
+          onSave={setRawgKey}
+          onChanged={onRawgKeyChanged}
+        />
       </div>
+    </div>
+  );
+}
+
+/** One API-key row: masked when set (with a clear button), an input + Save
+ *  otherwise. `onSave("")` clears; the parent re-reads `hasKey` via `onChanged`. */
+function ApiKeyField({
+  label,
+  blurb,
+  placeholder,
+  hasKey,
+  onSave,
+  onChanged,
+}: {
+  label: string;
+  blurb: string;
+  placeholder: string;
+  hasKey: boolean;
+  onSave: (key: string) => Promise<void>;
+  onChanged: () => void;
+}) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function save(clear = false) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await onSave(clear ? "" : key.trim());
+      setKey("");
+      onChanged();
+      setNote(clear ? "Key cleared." : "Key saved.");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="section">
+      <div className="section__label">{label}</div>
+      <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
+        {blurb}
+      </p>
+
+      {hasKey ? (
+        // A key exists: show it's set (masked) and require clearing to change.
+        <div className="keyfield">
+          <input
+            className="input"
+            value="••••••••••••••••"
+            disabled
+            aria-label={`${label} is set`}
+          />
+          <button
+            className="keyfield__x btn btn--ghost btn--icon-sm btn--dim"
+            onClick={() => save(true)}
+            disabled={busy}
+            title="Remove key"
+          >
+            <IconClose size={16} />
+          </button>
+        </div>
+      ) : (
+        <>
+          <input
+            className="input"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder={placeholder}
+            type="password"
+          />
+          <div className="row" style={{ marginTop: 14 }}>
+            <button
+              className="btn btn--accent"
+              onClick={() => save(false)}
+              disabled={busy || !key.trim()}
+            >
+              Save
+            </button>
+          </div>
+        </>
+      )}
+
+      {(note || error) && (
+        <p
+          className={error ? "error" : "muted"}
+          style={{ marginTop: 10, fontSize: "0.78rem" }}
+        >
+          {error || note}
+        </p>
+      )}
     </div>
   );
 }

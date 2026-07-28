@@ -2,8 +2,8 @@
 
 ## One line
 
-A local-first, open-source media tracker — Letterboxd for films, TV, anime, books, and
-manga — where **your data lives on your disk as plain human-readable files** and the GUI is
+A local-first, open-source media tracker — Letterboxd for films, TV, anime, books, manga,
+videogames, and music — where **your data lives on your disk as plain human-readable files** and the GUI is
 just a beautiful lens over them.
 
 ## The problem
@@ -23,8 +23,8 @@ button. manifest inverts that: the files are the product, the app is optional.
    user's formatting, key order, and comments as faithfully as possible.
 3. **Local-first & offline.** No account, no server, no telemetry. Covers and metadata are
    fetched once from public APIs and cached locally so the library works with no network.
-4. **One format across all media.** Films, TV, anime, books, and manga share a common
-   schema with medium-specific fields layered on top. A book and a film should feel like
+4. **One format across all media.** Films, TV, anime, books, manga, videogames, and music
+   share a common schema with medium-specific fields layered on top. A book and a film should feel like
    the same kind of object with different attributes.
 5. **The notes are the point.** The dated free-text log (see example below) is the heart of
    the app — it's a diary, not a rating field. Everything else serves it.

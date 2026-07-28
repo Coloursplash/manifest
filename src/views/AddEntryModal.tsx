@@ -39,6 +39,7 @@ async function finalize(entry: Entry, status: Status): Promise<Entry> {
 
 export function AddEntryModal({
   hasKey,
+  hasRawgKey,
   enabledMedia,
   initialMedium,
   onClose,
@@ -46,6 +47,7 @@ export function AddEntryModal({
   onNeedKey,
 }: {
   hasKey: boolean;
+  hasRawgKey: boolean;
   enabledMedia: Medium[];
   /** The active header filter. When set, the modal opens locked to it and
    *  hides its own category picker; when null ("All") it shows the picker. */
@@ -68,8 +70,11 @@ export function AddEntryModal({
   const [previewExtra, setPreviewExtra] = useState<Record<string, unknown>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const keyMissing = (m: Medium) => (m === "film" || m === "tv") && !hasKey;
+  const keyMissing = (m: Medium) =>
+    (m === "film" || m === "tv" ? !hasKey : m === "game" ? !hasRawgKey : false);
   const needsKey = keyMissing(medium);
+  // Which provider key is missing, for the prompt copy.
+  const keyName = medium === "game" ? "RAWG" : "TMDB";
 
   // Open the info preview for a hit, pulling crew/genres for providers that
   // gate them behind a detail call (TMDB). AniList/books already carry theirs.
@@ -205,14 +210,14 @@ export function AddEntryModal({
           <div className="stack">
             <div className="panel" style={{ padding: 18, maxWidth: "none" }}>
               <div className="label" style={{ marginBottom: 6 }}>
-                TMDB key required
+                {keyName} key required
               </div>
               <p style={{ margin: "0 0 14px" }}>
-                Searching {MEDIUM_LABEL[medium].toLowerCase()} needs a free TMDB
-                API key. Anime, manga, and books don’t need one.
+                Searching {MEDIUM_LABEL[medium].toLowerCase()} needs a free{" "}
+                {keyName} API key. Anime, manga, music, and books don’t need one.
               </p>
               <button className="btn btn--accent btn--lg" onClick={onNeedKey}>
-                Add TMDB key
+                Add {keyName} key
               </button>
             </div>
             <div className="label">Or add by hand</div>

@@ -16,6 +16,7 @@ import {
   PROGRESS,
   STATUSES,
   statusLabel,
+  VERBS,
   type Entry,
   type Medium,
   type Status,
@@ -42,7 +43,7 @@ export function EntryDetail({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
-  const logVerb = entry.medium === "book" || entry.medium === "manga" ? "read" : "watch";
+  const logVerb = VERBS[entry.medium].log;
 
   async function guard<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true);
@@ -335,6 +336,10 @@ function creatorOf(entry: Entry): string | undefined {
     case "tv":
     case "anime":
       return pick("studio") ?? pick("creator");
+    case "game":
+      return pick("developer");
+    case "music":
+      return pick("artist");
   }
 }
 
@@ -422,9 +427,8 @@ function NoteEditor({
   onSubmit: (date: string, tags: string[], body: string) => Promise<void>;
   onCancel?: () => void;
 }) {
-  const reread = medium === "book" || medium === "manga";
-  const repeatTag = reread ? "reread" : "rewatch";
-  const verb = reread ? "read" : "watched";
+  const repeatTag = VERBS[medium].repeat;
+  const verb = VERBS[medium].past;
 
   const [date, setDate] = useState(initial.date);
   const [tags, setTags] = useState<string[]>(initial.tags);

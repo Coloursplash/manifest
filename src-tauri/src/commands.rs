@@ -196,8 +196,9 @@ async fn search_metadata(
     let medium: Medium = medium
         .parse()
         .map_err(|_| format!("unknown medium: {medium}"))?;
-    let key = state::tmdb_key(&app);
-    fetch::search(medium, &query, key.as_deref())
+    let tmdb = state::tmdb_key(&app);
+    let rawg = state::rawg_key(&app);
+    fetch::search(medium, &query, tmdb.as_deref(), rawg.as_deref())
         .await
         .map_err(err)
 }
@@ -215,8 +216,9 @@ async fn fetch_details(
     let medium: Medium = medium
         .parse()
         .map_err(|_| format!("unknown medium: {medium}"))?;
-    let key = state::tmdb_key(&app);
-    fetch::details(medium, &reference, key.as_deref())
+    let tmdb = state::tmdb_key(&app);
+    let rawg = state::rawg_key(&app);
+    fetch::details(medium, &reference, tmdb.as_deref(), rawg.as_deref())
         .await
         .map_err(err)
 }
@@ -245,6 +247,23 @@ fn set_tmdb_key(app: AppHandle, key: String) -> Result<(), String> {
     .map_err(err)
 }
 
+/// Whether a RAWG key is configured (via env or stored config), gating
+/// videogame search the same way `has_tmdb_key` gates film/TV.
+#[tauri::command]
+fn has_rawg_key(app: AppHandle) -> bool {
+    state::rawg_key(&app).is_some()
+}
+
+/// Store (or clear, with an empty string) the user's RAWG key.
+#[tauri::command]
+fn set_rawg_key(app: AppHandle, key: String) -> Result<(), String> {
+    let trimmed = key.trim().to_string();
+    state::update_config(&app, |cfg| {
+        cfg.rawg_api_key = if trimmed.is_empty() { None } else { Some(trimmed) };
+    })
+    .map_err(err)
+}
+
 /// The set of commands exposed to the frontend.
 pub fn handlers() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
@@ -265,5 +284,7 @@ pub fn handlers() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sy
         cache_cover,
         has_tmdb_key,
         set_tmdb_key,
+        has_rawg_key,
+        set_rawg_key,
     ]
 }

@@ -90,3 +90,23 @@ export const IconMoon = (p: P) => (
     <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
   </Svg>
 );
+
+// 2×2 keys — the grid/shelf view.
+export const IconGrid = (p: P) => (
+  <Svg {...p}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.4" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.4" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.4" />
+  </Svg>
+);
+
+// Dated nodes down a spine — the timeline/diary view.
+export const IconTimeline = (p: P) => (
+  <Svg {...p}>
+    <circle cx="5" cy="6" r="1.6" />
+    <circle cx="5" cy="12" r="1.6" />
+    <circle cx="5" cy="18" r="1.6" />
+    <path d="M10 6h10M10 12h10M10 18h7" />
+  </Svg>
+);

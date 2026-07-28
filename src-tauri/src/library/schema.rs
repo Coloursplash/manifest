@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-/// The five kinds of media manifest tracks. The canonical lowercase name
+/// The kinds of media manifest tracks. The canonical lowercase name
 /// (`film`, `tv`, …) is used in entry ids and TOML; the plural `dir()` is the
 /// on-disk folder under the library root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,15 +18,19 @@ pub enum Medium {
     Anime,
     Book,
     Manga,
+    Game,
+    Music,
 }
 
 impl Medium {
-    pub const ALL: [Medium; 5] = [
+    pub const ALL: [Medium; 7] = [
         Medium::Film,
         Medium::Tv,
         Medium::Anime,
         Medium::Book,
         Medium::Manga,
+        Medium::Game,
+        Medium::Music,
     ];
 
     /// Canonical lowercase name, used in entry ids and as the TOML value.
@@ -37,6 +41,8 @@ impl Medium {
             Medium::Anime => "anime",
             Medium::Book => "book",
             Medium::Manga => "manga",
+            Medium::Game => "game",
+            Medium::Music => "music",
         }
     }
 
@@ -48,6 +54,8 @@ impl Medium {
             Medium::Anime => "anime",
             Medium::Book => "books",
             Medium::Manga => "manga",
+            Medium::Game => "games",
+            Medium::Music => "music",
         }
     }
 }
@@ -62,6 +70,8 @@ impl FromStr for Medium {
             "anime" => Ok(Medium::Anime),
             "book" | "books" => Ok(Medium::Book),
             "manga" => Ok(Medium::Manga),
+            "game" | "games" | "videogame" | "video-game" => Ok(Medium::Game),
+            "music" | "album" | "albums" => Ok(Medium::Music),
             _ => Err(()),
         }
     }

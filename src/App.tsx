@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   getLibraryPath,
+  hasRawgKey,
   hasTmdbKey,
   listEntries,
   onLibraryChanged,
@@ -14,7 +15,7 @@ import { getLayout, setLayout, type Layout } from "./lib/layout";
 import { getSort, setSort, sortEntries, SORT_KEYS, SORT_LABEL, type SortKey } from "./lib/sort";
 import { buildTimeline } from "./lib/timeline";
 import { refreshEntry } from "./lib/refresh";
-import { IconPlus, IconSettings } from "./components/icons";
+import { IconGrid, IconPlus, IconSettings, IconTimeline } from "./components/icons";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
 import { Timeline } from "./views/Timeline";
@@ -34,6 +35,7 @@ export default function App() {
   );
   const [entries, setEntries] = useState<Entry[]>([]);
   const [hasKey, setHasKey] = useState(false);
+  const [hasRawg, setHasRawg] = useState(false);
 
   const [view, setView] = useState<View>({ kind: "grid" });
   const [layout, setLayoutState] = useState<Layout>(getLayout());
@@ -92,6 +94,7 @@ export default function App() {
     if (!libraryPath) return;
     reload();
     hasTmdbKey().then(setHasKey);
+    hasRawgKey().then(setHasRawg);
     const unlisten = onLibraryChanged(reload);
     return () => {
       unlisten.then((fn) => fn());
@@ -185,34 +188,6 @@ export default function App() {
           ))}
         </div>
         <div className="topbar__actions">
-          <div className="seg" role="group" aria-label="View">
-            <button
-              className={`seg__btn ${layout === "grid" ? "seg__btn--on" : ""}`}
-              onClick={() => changeLayout("grid")}
-            >
-              Grid
-            </button>
-            <button
-              className={`seg__btn ${layout === "timeline" ? "seg__btn--on" : ""}`}
-              onClick={() => changeLayout("timeline")}
-            >
-              Timeline
-            </button>
-          </div>
-          {layout === "grid" && (
-            <select
-              className="select"
-              value={sort}
-              onChange={(e) => changeSort(e.target.value as SortKey)}
-              title="Sort"
-            >
-              {SORT_KEYS.map((k) => (
-                <option key={k} value={k}>
-                  {SORT_LABEL[k]}
-                </option>
-              ))}
-            </select>
-          )}
           <input
             className="input topbar__search"
             value={query}
@@ -236,6 +211,47 @@ export default function App() {
       </div>
 
       <div className="content">
+        {view.kind === "grid" && (
+          <div className="viewbar">
+            {/* Sort lives with the view toggle — the timeline is always
+                date-descending, so it's grid-only. */}
+            {layout === "grid" && (
+              <select
+                className="select"
+                value={sort}
+                onChange={(e) => changeSort(e.target.value as SortKey)}
+                title="Sort"
+                aria-label="Sort"
+              >
+                {SORT_KEYS.map((k) => (
+                  <option key={k} value={k}>
+                    {SORT_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="seg" role="group" aria-label="View">
+              <button
+                className={`seg__btn seg__btn--icon ${layout === "grid" ? "seg__btn--on" : ""}`}
+                onClick={() => changeLayout("grid")}
+                title="Grid view"
+                aria-label="Grid view"
+                aria-pressed={layout === "grid"}
+              >
+                <IconGrid size={17} />
+              </button>
+              <button
+                className={`seg__btn seg__btn--icon ${layout === "timeline" ? "seg__btn--on" : ""}`}
+                onClick={() => changeLayout("timeline")}
+                title="Timeline view"
+                aria-label="Timeline view"
+                aria-pressed={layout === "timeline"}
+              >
+                <IconTimeline size={17} />
+              </button>
+            </div>
+          </div>
+        )}
         {view.kind === "review" ? (
           <Review
             year={view.year}
@@ -282,6 +298,7 @@ export default function App() {
       {showAdd && (
         <AddEntryModal
           hasKey={hasKey}
+          hasRawgKey={hasRawg}
           enabledMedia={enabledMedia}
           initialMedium={filterMedium}
           onClose={() => setShowAdd(false)}
@@ -304,6 +321,8 @@ export default function App() {
           onRefreshAll={refreshAllMetadata}
           hasKey={hasKey}
           onKeyChanged={() => hasTmdbKey().then(setHasKey)}
+          hasRawgKey={hasRawg}
+          onRawgKeyChanged={() => hasRawgKey().then(setHasRawg)}
           onClose={() => setShowSettings(false)}
         />
       )}

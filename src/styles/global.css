@@ -429,10 +429,47 @@ input[type="date"] {
 }
 
 .content {
+  /* Only the main view scrolls — so the scrollbar lives under the header, not
+     down the side of the whole window. The gutter is always reserved so the
+     layout never shifts sideways when the scrollbar appears. */
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 26px 22px 56px;
   background: var(--bg);
+}
+
+/* Themed scrollbars — a slim, rounded thumb in the palette over a transparent
+   track, so the always-reserved gutter blends into the background instead of
+   showing the OS's default bar. Applies to the main view and the modal
+   overlay (add-media / settings), the two things that scroll. */
+.content::-webkit-scrollbar,
+.scrim::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.content::-webkit-scrollbar-track,
+.scrim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.content::-webkit-scrollbar-thumb,
+.scrim::-webkit-scrollbar-thumb {
+  /* Border + padding-box clip insets the thumb, leaving a slim pill with the
+     track showing through the margin. */
+  background: var(--line-2);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 8px;
+}
+.content:hover::-webkit-scrollbar-thumb,
+.scrim:hover::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  background-clip: padding-box;
+}
+.content::-webkit-scrollbar-thumb:hover,
+.scrim::-webkit-scrollbar-thumb:hover {
+  background: var(--fg);
+  background-clip: padding-box;
 }
 
 /* --- library grid --- */
@@ -1042,6 +1079,22 @@ input[type="date"] {
 .seg__btn--on {
   background: var(--accent);
   color: var(--accent-ink);
+}
+.seg__btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.44em 0.72em;
+}
+
+/* Right-aligned view controls (sort + grid/timeline toggle), sitting in the
+   top-right of the content area rather than crowding the header. */
+.viewbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 18px;
 }
 
 /* --- grouped, collapsible library sections --- */

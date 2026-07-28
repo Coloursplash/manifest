@@ -35,13 +35,16 @@ impl AppState {
     }
 }
 
-/// Persisted app config: a pointer to the library folder and the user's TMDB
-/// key. Note this is the *only* thing outside the library that we persist.
+/// Persisted app config: a pointer to the library folder and the user's API
+/// keys. Note this is the *only* thing outside the library that we persist.
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     pub library: Option<String>,
     #[serde(default)]
     pub tmdb_api_key: Option<String>,
+    /// RAWG key for videogame search (rawg.io). Music/anime/manga/books need none.
+    #[serde(default)]
+    pub rawg_api_key: Option<String>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf> {
@@ -87,6 +90,18 @@ pub fn tmdb_key(app: &AppHandle) -> Option<String> {
     }
     read_config(app)
         .tmdb_api_key
+        .filter(|k| !k.trim().is_empty())
+}
+
+/// The RAWG key, preferring the `RAWG_API_KEY` env var over stored config.
+pub fn rawg_key(app: &AppHandle) -> Option<String> {
+    if let Ok(key) = std::env::var("RAWG_API_KEY") {
+        if !key.trim().is_empty() {
+            return Some(key);
+        }
+    }
+    read_config(app)
+        .rawg_api_key
         .filter(|k| !k.trim().is_empty())
 }
 

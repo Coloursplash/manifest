@@ -6,6 +6,8 @@
 
 pub mod anilist;
 pub mod books;
+pub mod musicbrainz;
+pub mod rawg;
 pub mod tmdb;
 
 use std::sync::OnceLock;
@@ -55,12 +57,14 @@ pub fn client() -> &'static reqwest::Client {
     })
 }
 
-/// Dispatch a search to the right provider(s) for the medium.
-/// `tmdb_key` is required for film/TV and ignored otherwise.
+/// Dispatch a search to the right provider(s) for the medium. `tmdb_key` is
+/// required for film/TV and `rawg_key` for games; both are ignored for the
+/// keyless providers (anime, manga, books, music).
 pub async fn search(
     medium: Medium,
     query: &str,
     tmdb_key: Option<&str>,
+    rawg_key: Option<&str>,
 ) -> Result<Vec<Candidate>> {
     let query = query.trim();
     if query.is_empty() {
@@ -72,6 +76,8 @@ pub async fn search(
         Medium::Anime => anilist::search(query, anilist::Kind::Anime).await,
         Medium::Manga => anilist::search(query, anilist::Kind::Manga).await,
         Medium::Book => books::search(query).await,
+        Medium::Game => rawg::search(query, rawg_key).await,
+        Medium::Music => musicbrainz::search(query).await,
     }
 }
 
@@ -83,6 +89,7 @@ pub async fn details(
     medium: Medium,
     reference: &str,
     tmdb_key: Option<&str>,
+    rawg_key: Option<&str>,
 ) -> Result<serde_json::Map<String, serde_json::Value>> {
     match medium {
         Medium::Film | Medium::Tv => {
@@ -98,6 +105,10 @@ pub async fn details(
             tmdb::details(key, kind, id).await
         }
         Medium::Book => books::details(reference).await,
-        Medium::Anime | Medium::Manga => Ok(serde_json::Map::new()),
+        Medium::Game => {
+            let key = rawg_key.ok_or_else(|| anyhow::anyhow!("RAWG API key not set"))?;
+            rawg::details(key, reference).await
+        }
+        Medium::Anime | Medium::Manga | Medium::Music => Ok(serde_json::Map::new()),
     }
 }

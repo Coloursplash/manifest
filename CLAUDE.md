@@ -5,7 +5,8 @@ the "how". Keep this file current as decisions are made.
 
 ## What this is
 
-An open-source, local-first media tracker (films, TV, anime, books, manga). User data lives
+An open-source, local-first media tracker (films, TV, anime, books, manga, videogames,
+music). User data lives
 on disk as plain `.toml` files; the GUI is a lens over them. See `GOAL.md`.
 
 ## The prime directive
@@ -65,8 +66,8 @@ Create this incrementally — don't scaffold empty dirs ahead of need.
 ## Data schema
 
 One `.toml` file per entry, grouped by medium under the library folder, e.g.
-`library/films/`, `library/tv/`, `library/anime/`, `library/books/`, `library/manga/`.
-Filename is a slug of the title.
+`library/films/`, `library/tv/`, `library/anime/`, `library/books/`, `library/manga/`,
+`library/games/`, `library/music/`. Filename is a slug of the title.
 
 **Shared fields (all media):**
 - `title` (string, required)
@@ -79,13 +80,17 @@ Filename is a slug of the title.
 
 **Progress fields (typed, optional; interpreted per medium by the UI):**
 - `started` / `finished` (date strings `YYYY-MM-DD`)
-- `progress` (int) — page (books/manga) or episode (tv/anime); film has none (single sitting)
+- `progress` (int) — page (books/manga), episode (tv/anime), or **hours played** (games,
+  open-ended so no completion bar); film/music have none (single sitting)
 - `season` (int) — tv
 
 **Per-medium fields (layer on top, live in `extra`):**
 - films: `director`, `runtime`
 - tv / anime: `creator`/`studio`, `episodes`
 - books / manga: `author`, `pages`/`volumes`/`chapters` (the total; `progress` is the position)
+- games: `developer`, `publisher`, `platforms`, `genres`, `metacritic` (progress is hours;
+  `done` = "Beaten", 100% is logged in `notes`, not a separate status)
+- music: `artist`, `type` (Album/EP/Single) — albums are single-sitting like film
 
 **Notes convention:** each block's header is `YYYY-MM-DD` optionally followed by `#tag`s
 (rewatch/reread are tags, not prose). The body is optional — a bare dated+tagged line is a
@@ -105,6 +110,10 @@ rewatch" = append a new dated block; never rewrite existing blocks.
   a build-time env, never committed).
 - **Anime / Manga:** AniList GraphQL (no key) — preferred; MAL as fallback.
 - **Books:** Open Library (no key) first, Google Books as fallback.
+- **Videogames:** RAWG (rawg.io; needs a free API key, user-supplied like TMDB — kept out of
+  the repo, stored in app config as `rawg_api_key`, or the `RAWG_API_KEY` env var).
+- **Music:** MusicBrainz release-group search (no key; descriptive User-Agent required) +
+  Cover Art Archive for covers (no key).
 
 Rules: fetch on demand (user searches / adds an entry), cache aggressively, degrade
 gracefully offline, and always let the user override or hand-enter any fetched field.
@@ -178,6 +187,17 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     chart (12 months, or per-day for a month), and top-rated covers. Reached by clicking a
     year *or* month header on the timeline; `App`'s `View` gains a
     `{kind:"review"; year; month?}` case. Whole-library (ignores the medium tab), read-only.
+
+- **v1.3 done — videogames + music.** Two new media added end-to-end. Backend: `Medium::Game`
+  / `Medium::Music` (`schema.rs`), providers `fetch/rawg.rs` (games; user-supplied RAWG key,
+  search list + detail call for developer/publisher/synopsis) and `fetch/musicbrainz.rs`
+  (music; keyless release-group search, Cover Art Archive covers). `fetch::search`/`details`
+  now thread a `rawg_key` alongside `tmdb_key`; `state.rs` stores `rawg_api_key`; new
+  `has_rawg_key`/`set_rawg_key` commands. Frontend: `types.ts` gains the two mediums with
+  labels, status verbs (games `done` = "Beaten"), a `VERBS` table (log/past/repeat-tag per
+  medium, replacing the old book/manga literals in `EntryDetail`), and `PROGRESS` (games =
+  open-ended `hour` unit with no total → no completion bar; music single-sitting). RAWG key
+  gated in the Add flow + a second key field in Settings (`ApiKeyField` extracted and reused).
 
 Known: user has reported bugs in the new views to be triaged; project has no frontend test
 suite yet (planned).

@@ -1,10 +1,10 @@
 // Mirrors the Rust schema (src-tauri/src/library/schema.rs and fetch/mod.rs).
 // Keep these in sync with the backend by hand — they're the contract.
 
-export type Medium = "film" | "tv" | "anime" | "book" | "manga";
+export type Medium = "film" | "tv" | "anime" | "book" | "manga" | "game" | "music";
 export type Status = "want" | "active" | "done" | "dropped" | "paused";
 
-export const MEDIA: Medium[] = ["film", "tv", "anime", "book", "manga"];
+export const MEDIA: Medium[] = ["film", "tv", "anime", "book", "manga", "game", "music"];
 export const STATUSES: Status[] = ["want", "active", "done", "dropped", "paused"];
 
 export const MEDIUM_LABEL: Record<Medium, string> = {
@@ -13,19 +13,45 @@ export const MEDIUM_LABEL: Record<Medium, string> = {
   anime: "Anime",
   book: "Books",
   manga: "Manga",
+  game: "Games",
+  music: "Music",
 };
 
-// Status names read differently per medium ("Reading" vs "Watching").
+// Status names read differently per medium ("Reading" vs "Watching"). For games
+// "done" is "Beaten" (100% completion is just a log entry, not a status).
 const STATUS_VERB: Record<Medium, Record<Status, string>> = {
   film: { want: "Plan to watch", active: "Watching", done: "Watched", dropped: "Abandoned", paused: "On hold" },
   tv: { want: "Plan to watch", active: "Watching", done: "Watched", dropped: "Dropped", paused: "On hold" },
   anime: { want: "Plan to watch", active: "Watching", done: "Watched", dropped: "Dropped", paused: "On hold" },
   book: { want: "Plan to read", active: "Reading", done: "Read", dropped: "Dropped", paused: "On hold" },
   manga: { want: "Plan to read", active: "Reading", done: "Read", dropped: "Dropped", paused: "On hold" },
+  game: { want: "Backlog", active: "Playing", done: "Beaten", dropped: "Dropped", paused: "On hold" },
+  music: { want: "Want to hear", active: "Listening", done: "Listened", dropped: "Dropped", paused: "On hold" },
 };
 
 export const statusLabel = (medium: Medium, status: Status): string =>
   STATUS_VERB[medium][status];
+
+// Verbs for the notes log ("Log a watch/read/play/listen") and the repeat tag
+// (#rewatch / #reread / #replay / #relisten).
+export interface MediumVerbs {
+  /** Imperative, for "Log a ___". */
+  log: string;
+  /** Past tense, for "Just ___ it". */
+  past: string;
+  /** The repeat tag (without the #). */
+  repeat: string;
+}
+
+export const VERBS: Record<Medium, MediumVerbs> = {
+  film: { log: "watch", past: "watched", repeat: "rewatch" },
+  tv: { log: "watch", past: "watched", repeat: "rewatch" },
+  anime: { log: "watch", past: "watched", repeat: "rewatch" },
+  book: { log: "read", past: "read", repeat: "reread" },
+  manga: { log: "read", past: "read", repeat: "reread" },
+  game: { log: "session", past: "played", repeat: "replay" },
+  music: { log: "listen", past: "listened", repeat: "relisten" },
+};
 
 // Which statuses to surface as one-click "add" actions from search.
 export const QUICK_STATUSES: Status[] = ["want", "active", "done"];
@@ -48,6 +74,10 @@ export const PROGRESS: Record<Medium, ProgressShape> = {
   anime: { single: false, unit: "episode", totalKey: "episodes", hasSeason: false },
   book: { single: false, unit: "page", totalKey: "pages", hasSeason: false },
   manga: { single: false, unit: "chapter", totalKey: "chapters", hasSeason: false },
+  // Games track open-ended hours played — no total, so no completion bar; % goes
+  // in the log. Music is single-sitting like film (an album you queue up).
+  game: { single: false, unit: "hour", hasSeason: false },
+  music: { single: true, hasSeason: false },
 };
 
 export interface Entry {

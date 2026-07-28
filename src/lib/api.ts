@@ -72,6 +72,11 @@ export const hasTmdbKey = () => invoke<boolean>("has_tmdb_key");
 export const setTmdbKey = (key: string) =>
   invoke<void>("set_tmdb_key", { key });
 
+export const hasRawgKey = () => invoke<boolean>("has_rawg_key");
+
+export const setRawgKey = (key: string) =>
+  invoke<void>("set_rawg_key", { key });
+
 // --- covers: turn a cached path into a webview-loadable src ---
 
 export const coverSrc = (path: string) => convertFileSrc(path);
