@@ -199,8 +199,64 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   open-ended `hour` unit with no total → no completion bar; music single-sitting). RAWG key
   gated in the Add flow + a second key field in Settings (`ApiKeyField` extracted and reused).
 
+- **v1.4 done — first-run wizard + naming.** `views/Onboarding.tsx` is now a stepped setup
+  wizard (folder → what to track → API keys → ready) with a progress stepper, replacing the
+  single "choose folder" panel. It picks the library folder, lets the user choose enabled
+  media (persisted via `saveEnabledMedia`, lifted to `App` through `onSetMedia`), and offers
+  the TMDB/RAWG key fields inline — the keys step is skipped when nothing tracked needs a key
+  (reuses `ApiKeyField`, now exported from `SettingsModal`). `App` only swaps to the home
+  screen on the final `onComplete(path)`; the backend folder is activated on pick, so quitting
+  mid-wizard just lands on home next launch (media/keys still settable in Settings). Wizard
+  styles live under `.wizard*` in `global.css`; new `IconFolder`. Also renamed the grid's
+  `want`-status section from "Watchlist" → **"Backlog"** (neutral across games/music) — the
+  bucket key stays `watchlist` for the persisted collapse state.
+  - **Switch library + recent libraries.** `lib/libraries.ts` keeps a localStorage list
+    (`manifest-libraries`, most-recent-first, capped 8) of `{path, name}` — path + a user
+    nickname (defaults to the folder basename). `App` records the active folder into it on
+    every `libraryPath` change and exposes `switchToLibrary(path)` (activates by path via
+    `set_library_folder`; drops the entry from the list if the folder is gone) and
+    `browseForLibrary()` (native picker). `components/LibrarySwitcher.tsx` is a rail dropdown
+    under the brand showing the current nickname + a menu of the others (menu is
+    `position: fixed`, measured off the trigger, to escape the rail's scroll clipping).
+    `SettingsModal`'s "Library" section lists all recents with an inline-editable nickname
+    (`RecentLibraryRow`, committed on blur/Enter), a Switch button, and a forget (×) action;
+    "Open another folder…" browses. Lets a user keep separate libraries (per person / user)
+    on one machine and hop between them in a click. One folder is active at a time. Library
+    switching lives **only in Settings** (not the rail) — it's not a primary action.
+  - **Themed dropdown.** `components/Dropdown.tsx` is a reusable custom `<select>` (chunky
+    trigger + `position: fixed` menu measured off the trigger so it escapes overflow
+    clipping; `align` left/right, optional `leading` label, checkmark on the selected item).
+    The topbar Sort control uses it (`align="right"`, `leading="Sort"`), replacing the native
+    `<select>`/`.select` (both removed).
+  - **More sort options.** `lib/sort.ts` now offers Name A–Z / Z–A, Recently finished,
+    Recently started, Newest / Oldest release, Highest / Lowest rated (8 keys). Comparators
+    refactored into `byTitle`/`byDateDesc`/`byNumber(dir)` helpers + a `COMPARATORS` table;
+    missing fields always sort last. Old persisted keys still validate.
+  - **Reorderable categories.** `lib/media.ts` now persists a user **order** alongside the
+    enabled set (`{order, enabled, known}`; migrates the old `{enabled, known}` and legacy
+    bare-array shapes — order defaults to canonical `MEDIA`, new media append + auto-enable).
+    `getMediaOrder`/`saveMediaOrder` added; `getEnabledMedia`/`saveEnabledMedia` now return in
+    user order. `components/MediaChooser.tsx` is a shared draggable list (grip + label + a
+    show/hide checkbox per row, ≥1 enabled) used in **both** Settings and the onboarding
+    "Track" step (which now toggles/reorders live via `App` instead of staging a local
+    `selected`). Order drives the rail + Add flow; the grid's per-medium sub-grouping still
+    uses canonical `MEDIA` order.
+    Reorder uses **pointer events** (not HTML5 DnD — Tauri's webview swallows native drag
+    events). Technique that actually feels right: grab the row anywhere but the checkbox →
+    `setPointerCapture`; the held row gets a live inline `translateY(dy) scale` and pops
+    (`.is-held`: accent border + offset shadow, follows the cursor 1:1), while neighbours get
+    a slot-sized `translateY` shift with a transition. The array is **not** reshuffled during
+    the drag (that reset the baseline and made it "break"); it's spliced once on pointer-up
+    (optimistic `setItems` + `onReorder`). Stride (row height + gap) is measured on drag start.
+    Travel clamps to the list bounds; text selection is killed app-wide via a `body.is-
+    reordering` class during the drag. When the cursor nears the scroll container's top/bottom
+    margin the container auto-scrolls (rAF loop, nearest scrollable ancestor = the `.scrim`),
+    and the scroll delta since drag-start is folded into the drag math so the held row stays
+    under the cursor. Row toggle reads Show/Hide (full-height, wide hit target).
+
 Known: user has reported bugs in the new views to be triaged; project has no frontend test
-suite yet (planned).
+suite yet (planned). Idea on the table: a "wishlist" concept distinct from backlog, gated on
+adding an `owned` tag for games/books (they're not subscription media) — not built yet.
 
 v1 core loop complete. Next: import from other trackers, custom media types, frontend tests.
 

@@ -16,7 +16,7 @@ interface SectionDef {
 
 const SECTIONS: SectionDef[] = [
   { key: "progress", label: "In Progress", statuses: ["active", "paused"], defaultOpen: true, byMedium: true },
-  { key: "watchlist", label: "Watchlist", statuses: ["want"], defaultOpen: false },
+  { key: "watchlist", label: "Backlog", statuses: ["want"], defaultOpen: false },
   { key: "done", label: "Done", statuses: ["done"], defaultOpen: false },
   { key: "dropped", label: "Dropped", statuses: ["dropped"], defaultOpen: false },
 ];

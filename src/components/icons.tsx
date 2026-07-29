@@ -91,6 +91,24 @@ export const IconMoon = (p: P) => (
   </Svg>
 );
 
+// Drag handle — two rows of dots, the universal "grab to reorder" affordance.
+export const IconGrip = (p: P) => (
+  <Svg {...p}>
+    <circle cx="9" cy="6" r="1" />
+    <circle cx="15" cy="6" r="1" />
+    <circle cx="9" cy="12" r="1" />
+    <circle cx="15" cy="12" r="1" />
+    <circle cx="9" cy="18" r="1" />
+    <circle cx="15" cy="18" r="1" />
+  </Svg>
+);
+
+export const IconFolder = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+  </Svg>
+);
+
 // 2×2 keys — the grid/shelf view.
 export const IconGrid = (p: P) => (
   <Svg {...p}>

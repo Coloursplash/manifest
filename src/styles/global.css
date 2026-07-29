@@ -365,9 +365,18 @@ input[type="date"] {
 /* --- app shell --- */
 .app {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   background: var(--bg);
+}
+/* The main column sits right of the rail. min-width:0 lets the grid inside
+   shrink instead of forcing the whole window wider. */
+.main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
 }
 .topbar {
   display: flex;
@@ -377,7 +386,6 @@ input[type="date"] {
   row-gap: 12px;
   padding: 14px 22px;
   background: var(--panel);
-  border-top: 3px solid var(--accent);
   border-bottom: 2px solid var(--line-2);
 }
 /* Search + actions cluster: hugs the right edge, and drops to its own line
@@ -389,15 +397,86 @@ input[type="date"] {
   margin-left: auto;
 }
 
+/* --- left function rail --- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 178px;
+  flex: none;
+  padding: 18px 14px;
+  background: var(--panel);
+  border-right: 2px solid var(--line-2);
+  border-top: 3px solid var(--accent);
+  overflow-y: auto;
+}
+.rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.rail__legend {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  padding: 0 0.9em 4px;
+}
+.rail__spacer {
+  flex: 1;
+}
+/* Function keys: full-width, left-aligned, chunky. Active = filled accent. */
+.railkey {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  color: var(--muted);
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: var(--r);
+  padding: 0.62em 0.9em;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+  user-select: none;
+}
+.railkey:hover {
+  color: var(--fg);
+  border-color: var(--line-2);
+}
+.railkey--on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.railkey--on:hover {
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.rail__settings {
+  flex: none;
+  color: var(--muted);
+}
+
 /* --- brand plate --- */
 .brand {
   display: flex;
   flex-direction: column;
   gap: 2px;
   line-height: 1;
-  padding-right: 8px;
-  border-right: 2px solid var(--line);
-  margin-right: 4px;
+}
+/* In the rail the plate sits stacked at the top with a rule under it. */
+.rail .brand {
+  padding: 0 0.4em 16px;
+  border-bottom: 2px solid var(--line);
 }
 .brand__name {
   font-weight: 800;
@@ -414,11 +493,224 @@ input[type="date"] {
   color: var(--accent);
 }
 
-.topbar__tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+/* --- themed dropdown (custom <select>) --- */
+.dropdown {
+  display: inline-flex;
 }
+.dropdown__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--r);
+  padding: 0.55em 0.7em;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+.dropdown__btn:hover {
+  border-color: var(--accent);
+}
+.dropdown__leading {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.dropdown__value {
+  white-space: nowrap;
+}
+.dropdown__caret {
+  color: var(--muted);
+  font-size: 0.7rem;
+  transition: transform 0.12s ease;
+}
+.dropdown__caret.is-open {
+  transform: rotate(180deg);
+}
+.dropdown__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.dropdown__menu {
+  position: fixed;
+  z-index: 41;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--r);
+  box-shadow: 6px 6px 0 var(--hard);
+}
+.dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  border-radius: var(--r);
+  padding: 7px 9px;
+  cursor: pointer;
+}
+.dropdown__item:hover {
+  background: var(--panel-2);
+}
+.dropdown__item.is-selected {
+  color: var(--accent);
+}
+.dropdown__check {
+  display: grid;
+  place-items: center;
+  width: 13px;
+  flex: none;
+  color: var(--accent);
+}
+
+/* --- recent libraries (Settings) --- */
+.lib-recents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lib-recent {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+}
+.lib-recent.is-current {
+  border-color: var(--accent);
+}
+.lib-recent__name {
+  font-weight: 700;
+  padding: 0.4em 0.6em;
+}
+.lib-recent__path {
+  grid-column: 1 / 2;
+  font-size: 0.68rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-recent__actions {
+  grid-column: 2 / 3;
+  grid-row: 1 / 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lib-recent__current {
+  grid-column: 2 / 3;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+/* --- media chooser (draggable category list) --- */
+.mediachooser {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mediarow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  background: var(--panel-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+  cursor: grab;
+  /* stop touch-drag from scrolling the panel instead of reordering */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* while a row is being dragged, suppress selection across the whole app —
+   the pointer can range over other text (elsewhere in Settings) mid-drag */
+body.is-reordering {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grabbing;
+}
+/* the row being held: pops out, follows the cursor (translate is inline) */
+.mediarow.is-held {
+  cursor: grabbing;
+  background: var(--panel);
+  border-color: var(--accent);
+  box-shadow: 5px 6px 0 var(--hard);
+}
+.mediarow.is-off {
+  opacity: 0.5;
+}
+.mediarow__grip {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  flex: none;
+}
+.mediarow.is-held .mediarow__grip {
+  color: var(--accent);
+}
+.mediarow__label {
+  flex: 1;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+/* show/hide toggle — chunky pill, accent-filled when shown */
+.mediarow__toggle {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  min-width: 74px; /* wide target so you don't have to aim horizontally */
+  flex: none;
+  color: var(--muted);
+  background: transparent;
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--r);
+  padding: 0.4em 1em;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.mediarow__toggle:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.mediarow__toggle.is-on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.mediarow__toggle:disabled {
+  cursor: default;
+}
+
 .topbar__spacer {
   flex: 1;
 }
@@ -589,6 +881,135 @@ input[type="date"] {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* --- first-run wizard --- */
+.wizard {
+  max-width: 540px;
+}
+.wizard__steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0 0 18px;
+  border-bottom: 1.5px solid var(--line);
+}
+.wizard__step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  opacity: 0.55;
+}
+.wizard__step:not(:last-child)::after {
+  content: "";
+  width: 16px;
+  height: 1.5px;
+  margin-left: 4px;
+  background: var(--line-2);
+}
+.wizard__step.is-current,
+.wizard__step.is-done {
+  opacity: 1;
+}
+.wizard__step.is-current {
+  color: var(--fg);
+}
+.wizard__dot {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line-2);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.wizard__step.is-current .wizard__dot {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.wizard__step.is-done .wizard__dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.wizard__pane {
+  min-height: 190px;
+}
+.wizard__pane h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.wizard__pane p {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  margin: 0 0 18px;
+}
+.wizard__chosen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+  color: var(--muted);
+}
+.wizard__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--fg);
+}
+.wizard__summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 0.82rem;
+}
+.wizard__summary dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  align-self: center;
+}
+.wizard__summary dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wizard__summary code {
+  font-size: 0.76rem;
+}
+.wizard__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1.5px solid var(--line);
+}
+/* the wizard reuses ApiKeyField's .section blocks — tighten their top margin */
+.wizard__pane .section:first-of-type {
+  margin-top: 0;
 }
 .row {
   display: flex;
@@ -1032,71 +1453,6 @@ input[type="date"] {
 }
 
 /* --- sort select --- */
-.select {
-  font: inherit;
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  color: var(--fg);
-  background: var(--panel-2);
-  border: 1.5px solid var(--line-2);
-  border-radius: var(--r);
-  padding: 0.55em 0.7em;
-  cursor: pointer;
-}
-.select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-/* --- segmented view toggle (grid / timeline) --- */
-.seg {
-  display: inline-flex;
-  flex: none;
-  border: 1.5px solid var(--line-2);
-  border-radius: var(--r);
-  overflow: hidden;
-}
-.seg__btn {
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--muted);
-  background: transparent;
-  border: none;
-  border-right: 1.5px solid var(--line-2);
-  padding: 0.6em 1em;
-  cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
-}
-.seg__btn:last-child {
-  border-right: none;
-}
-.seg__btn:hover {
-  color: var(--fg);
-}
-.seg__btn--on {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.seg__btn--icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.44em 0.72em;
-}
-
-/* Right-aligned view controls (sort + grid/timeline toggle), sitting in the
-   top-right of the content area rather than crowding the header. */
-.viewbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  margin: -6px 0 18px;
-}
-
 /* --- grouped, collapsible library sections --- */
 .sections {
   display: flex;

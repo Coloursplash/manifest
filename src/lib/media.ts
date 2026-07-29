@@ -1,7 +1,8 @@
-// User-chosen set of enabled media categories. This only governs which category
-// tabs the UI surfaces (header filters + the Add flow) — the library on disk is
-// untouched, and entries of a hidden medium are never dropped. Persisted in
-// localStorage like theme/accent. At least one medium is always enabled.
+// User-chosen set + order of media categories. This governs which category tabs
+// the UI surfaces (rail filters + the Add flow) and in what order — the library
+// on disk is untouched, and entries of a hidden medium are never dropped.
+// Persisted in localStorage like theme/accent. At least one medium is always
+// enabled.
 
 import { MEDIA, type Medium } from "./types";
 
@@ -15,51 +16,96 @@ const KEY = "manifest-enabled-media";
 const LEGACY_MEDIA: Medium[] = ["film", "tv", "anime", "book", "manga"];
 
 interface Saved {
+  /** All known media in the user's preferred order. Absent in older saves. */
+  order?: Medium[];
   enabled: Medium[];
   /** The full MEDIA set at the time this was written. */
   known: Medium[];
 }
 
-/** Enabled media in canonical `MEDIA` order. Falls back to all media. A medium
- *  not present in the saved `known` universe (i.e. added since the last save) is
- *  treated as newly introduced and enabled by default. */
-export function getEnabledMedia(): Medium[] {
+export interface MediaState {
+  /** Every medium, in the user's order (newly-added ones appended). */
+  order: Medium[];
+  /** The enabled subset, in `order`. */
+  enabled: Medium[];
+}
+
+const isMedium = (x: unknown): x is Medium =>
+  typeof x === "string" && (MEDIA as string[]).includes(x);
+
+const allOn = (): MediaState => ({ order: [...MEDIA], enabled: [...MEDIA] });
+
+/** Read + normalise the saved state. New media (added since the save) are
+ *  appended to the order and default to enabled; order always covers all MEDIA. */
+function load(): MediaState {
   const raw = localStorage.getItem(KEY);
-  if (!raw) return [...MEDIA];
+  if (!raw) return allOn();
   try {
     const parsed = JSON.parse(raw) as unknown;
 
-    let enabled: unknown;
+    let enabledRaw: unknown;
+    let orderRaw: unknown;
     let known: Medium[];
     if (Array.isArray(parsed)) {
-      // Legacy format: a bare enabled-list from before `known` existed.
-      enabled = parsed;
+      // Legacy format: a bare enabled-list from before `known`/`order` existed.
+      enabledRaw = parsed;
+      orderRaw = undefined;
       known = LEGACY_MEDIA;
     } else if (parsed && typeof parsed === "object" && "enabled" in parsed) {
       const s = parsed as Partial<Saved>;
-      enabled = s.enabled;
-      known = Array.isArray(s.known) ? s.known : LEGACY_MEDIA;
+      enabledRaw = s.enabled;
+      orderRaw = s.order;
+      known = Array.isArray(s.known) ? s.known.filter(isMedium) : LEGACY_MEDIA;
     } else {
-      return [...MEDIA];
+      return allOn();
     }
-    if (!Array.isArray(enabled)) return [...MEDIA];
+    if (!Array.isArray(enabledRaw)) return allOn();
 
-    const result = MEDIA.filter(
-      (m) => (enabled as unknown[]).includes(m) || !known.includes(m),
-    );
-    return result.length ? result : [...MEDIA];
+    // Full order: saved order first (valid only), then any MEDIA not yet listed.
+    const order = Array.isArray(orderRaw) ? orderRaw.filter(isMedium) : [];
+    for (const m of MEDIA) if (!order.includes(m)) order.push(m);
+
+    // Enabled: saved-enabled ∪ newly-introduced (not in `known`), kept in order.
+    const on = new Set((enabledRaw as unknown[]).filter(isMedium));
+    for (const m of MEDIA) if (!known.includes(m)) on.add(m);
+    const enabled = order.filter((m) => on.has(m));
+
+    return { order, enabled: enabled.length ? enabled : [...MEDIA] };
   } catch {
-    return [...MEDIA];
+    return allOn();
   }
 }
 
-/** Persist and return the normalised list (canonical order, never empty). The
- *  current full MEDIA set is recorded as `known`, so the next medium we add
- *  auto-enables for this user instead of being filtered out. */
-export function saveEnabledMedia(media: Medium[]): Medium[] {
-  const ordered = MEDIA.filter((m) => media.includes(m));
-  const next = ordered.length ? ordered : [...MEDIA];
-  const payload: Saved = { enabled: next, known: [...MEDIA] };
+/** Persist an order + enabled set, normalising both (order covers all MEDIA,
+ *  enabled is a non-empty subset in order). Records the current MEDIA set as
+ *  `known` so the next medium we add auto-enables for this user. */
+function persist(order: Medium[], enabled: Medium[]): MediaState {
+  const fullOrder = order.filter(isMedium);
+  for (const m of MEDIA) if (!fullOrder.includes(m)) fullOrder.push(m);
+  const on = fullOrder.filter((m) => enabled.includes(m));
+  const finalEnabled = on.length ? on : [...MEDIA];
+  const payload: Saved = {
+    order: fullOrder,
+    enabled: finalEnabled,
+    known: [...MEDIA],
+  };
   localStorage.setItem(KEY, JSON.stringify(payload));
-  return next;
+  return { order: fullOrder, enabled: finalEnabled };
+}
+
+/** Every medium in the user's order. */
+export const getMediaOrder = (): Medium[] => load().order;
+
+/** Enabled media in the user's order. Falls back to all media. */
+export const getEnabledMedia = (): Medium[] => load().enabled;
+
+/** Persist a new enabled set (order preserved); returns the enabled list. */
+export function saveEnabledMedia(enabled: Medium[]): Medium[] {
+  return persist(load().order, enabled).enabled;
+}
+
+/** Persist a new full order (enabled membership preserved); returns both, since
+ *  reordering also reorders the enabled subset. */
+export function saveMediaOrder(order: Medium[]): MediaState {
+  return persist(order, load().enabled);
 }

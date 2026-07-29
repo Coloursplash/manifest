@@ -1,21 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  chooseLibraryFolder,
   getLibraryPath,
   hasRawgKey,
   hasTmdbKey,
   listEntries,
   onLibraryChanged,
+  setLibraryFolder,
 } from "./lib/api";
+import {
+  getLibraries,
+  recordLibrary,
+  removeLibrary,
+  renameLibrary,
+  type Library,
+} from "./lib/libraries";
 import { MEDIUM_LABEL, type Entry, type Medium } from "./lib/types";
 import { applyTheme, getTheme, type Theme } from "./lib/theme";
 import { applyAccent, getAccent } from "./lib/accent";
-import { getEnabledMedia, saveEnabledMedia } from "./lib/media";
+import {
+  getEnabledMedia,
+  getMediaOrder,
+  saveEnabledMedia,
+  saveMediaOrder,
+} from "./lib/media";
 import { getLayout, setLayout, type Layout } from "./lib/layout";
 import { getSort, setSort, sortEntries, SORT_KEYS, SORT_LABEL, type SortKey } from "./lib/sort";
 import { buildTimeline } from "./lib/timeline";
 import { refreshEntry } from "./lib/refresh";
 import { IconGrid, IconPlus, IconSettings, IconTimeline } from "./components/icons";
+import { Dropdown } from "./components/Dropdown";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
 import { Timeline } from "./views/Timeline";
@@ -36,6 +51,7 @@ export default function App() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [hasKey, setHasKey] = useState(false);
   const [hasRawg, setHasRawg] = useState(false);
+  const [libraries, setLibraries] = useState<Library[]>(getLibraries());
 
   const [view, setView] = useState<View>({ kind: "grid" });
   const [layout, setLayoutState] = useState<Layout>(getLayout());
@@ -47,6 +63,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getTheme());
   const [accent, setAccent] = useState<string>(getAccent());
   const [enabledMedia, setEnabledMedia] = useState<Medium[]>(getEnabledMedia());
+  const [mediaOrder, setMediaOrder] = useState<Medium[]>(getMediaOrder());
 
   function changeTheme(t: Theme) {
     applyTheme(t);
@@ -58,6 +75,16 @@ export default function App() {
   }
   function changeLayout(l: Layout) {
     setLayoutState(setLayout(l));
+  }
+  // Rail nav: picking a medium or a layout always drops you back onto the
+  // library (out of a detail/review page) so the click has a visible effect.
+  function selectMedium(m: Medium | null) {
+    setFilterMedium(m);
+    setView({ kind: "grid" });
+  }
+  function chooseLayout(l: Layout) {
+    changeLayout(l);
+    setView({ kind: "grid" });
   }
   function changeSort(k: SortKey) {
     setSortState(setSort(k));
@@ -71,6 +98,12 @@ export default function App() {
     setEnabledMedia(saveEnabledMedia(nextSet));
     // If we just hid the medium currently filtered, fall back to All.
     if (on && filterMedium === m) setFilterMedium(null);
+  }
+  // Reordering the categories also reorders the enabled subset, so take both.
+  function reorderMedia(order: Medium[]) {
+    const next = saveMediaOrder(order);
+    setMediaOrder(next.order);
+    setEnabledMedia(next.enabled);
   }
 
   const reload = useCallback(async () => {
@@ -92,6 +125,7 @@ export default function App() {
 
   useEffect(() => {
     if (!libraryPath) return;
+    setLibraries(recordLibrary(libraryPath)); // most-recently-used, keep nickname
     reload();
     hasTmdbKey().then(setHasKey);
     hasRawgKey().then(setHasRawg);
@@ -100,6 +134,36 @@ export default function App() {
       unlisten.then((fn) => fn());
     };
   }, [libraryPath, reload]);
+
+  // Drop any open detail/filter, then point at `path` — the effect above
+  // reloads its entries, keys and disk watcher and records it as most-recent.
+  const finalizeSwitch = useCallback((path: string) => {
+    setView({ kind: "grid" });
+    setFilterMedium(null);
+    setQuery("");
+    setShowSettings(false);
+    setLibraryPath(path);
+  }, []);
+
+  // Jump to a known recent folder (activates it on the backend by path). If it's
+  // gone (moved/deleted), drop it from the list rather than resurrecting it.
+  const switchToLibrary = useCallback(
+    async (path: string) => {
+      try {
+        await setLibraryFolder(path);
+        finalizeSwitch(path);
+      } catch {
+        setLibraries(removeLibrary(path));
+      }
+    },
+    [finalizeSwitch],
+  );
+
+  // Native picker → the chosen folder is already activated on the backend.
+  const browseForLibrary = useCallback(async () => {
+    const path = await chooseLibraryFolder();
+    if (path) finalizeSwitch(path);
+  }, [finalizeSwitch]);
 
   const upsert = useCallback((e: Entry) => {
     setEntries((prev) => {
@@ -155,103 +219,109 @@ export default function App() {
     return <div className="center spinner">loading…</div>;
   }
   if (libraryPath === null) {
-    return <Onboarding onChosen={(p) => setLibraryPath(p)} />;
+    return (
+      <Onboarding
+        onComplete={(p) => setLibraryPath(p)}
+        mediaOrder={mediaOrder}
+        enabledMedia={enabledMedia}
+        onToggleMedium={toggleMedium}
+        onReorderMedia={reorderMedia}
+      />
+    );
   }
 
   const selected =
     view.kind === "detail" ? entries.find((e) => e.id === view.id) : undefined;
 
+  const onLibrary = view.kind === "grid";
+
   return (
     <div className="app">
-      <div className="topbar">
+      <nav className="rail">
         <div className="brand">
           <div className="brand__name">
             MANIFEST<span className="dotmark">.</span>
           </div>
           <div className="brand__spec">マニフェスト</div>
         </div>
-        <div className="tabs">
+
+        <div className="rail__group">
+          <div className="rail__legend">Library</div>
           <button
-            className={`tab ${filterMedium === null ? "tab--on" : ""}`}
-            onClick={() => setFilterMedium(null)}
+            className={`railkey ${onLibrary && filterMedium === null ? "railkey--on" : ""}`}
+            onClick={() => selectMedium(null)}
           >
             All
           </button>
           {enabledMedia.map((m) => (
             <button
               key={m}
-              className={`tab ${filterMedium === m ? "tab--on" : ""}`}
-              onClick={() => setFilterMedium(m)}
+              className={`railkey ${onLibrary && filterMedium === m ? "railkey--on" : ""}`}
+              onClick={() => selectMedium(m)}
             >
               {MEDIUM_LABEL[m]}
             </button>
           ))}
         </div>
-        <div className="topbar__actions">
+
+        <div className="rail__spacer" />
+
+        <div className="rail__group">
+          <div className="rail__legend">View</div>
+          <button
+            className={`railkey railkey--icon ${onLibrary && layout === "grid" ? "railkey--on" : ""}`}
+            onClick={() => chooseLayout("grid")}
+            aria-pressed={onLibrary && layout === "grid"}
+          >
+            <IconGrid size={16} /> Grid
+          </button>
+          <button
+            className={`railkey railkey--icon ${onLibrary && layout === "timeline" ? "railkey--on" : ""}`}
+            onClick={() => chooseLayout("timeline")}
+            aria-pressed={onLibrary && layout === "timeline"}
+          >
+            <IconTimeline size={16} /> Timeline
+          </button>
+        </div>
+
+        <button
+          className="railkey railkey--icon rail__settings"
+          onClick={() => setShowSettings(true)}
+        >
+          <IconSettings size={16} /> Settings
+        </button>
+      </nav>
+
+      <div className="main">
+        <div className="topbar">
           <input
             className="input topbar__search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter library…"
           />
-          <button
-            className="btn btn--accent btn--lg"
-            onClick={() => setShowAdd(true)}
-          >
-            <IconPlus size={16} /> Add
-          </button>
-          <button
-            className="btn btn--icon"
-            onClick={() => setShowSettings(true)}
-            title="Settings"
-          >
-            <IconSettings />
-          </button>
-        </div>
-      </div>
-
-      <div className="content">
-        {view.kind === "grid" && (
-          <div className="viewbar">
-            {/* Sort lives with the view toggle — the timeline is always
-                date-descending, so it's grid-only. */}
-            {layout === "grid" && (
-              <select
-                className="select"
+          <div className="topbar__actions">
+            {/* Sort is grid-specific — the timeline is always date-descending. */}
+            {onLibrary && layout === "grid" && (
+              <Dropdown
                 value={sort}
-                onChange={(e) => changeSort(e.target.value as SortKey)}
-                title="Sort"
-                aria-label="Sort"
-              >
-                {SORT_KEYS.map((k) => (
-                  <option key={k} value={k}>
-                    {SORT_LABEL[k]}
-                  </option>
-                ))}
-              </select>
+                options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
+                onChange={(k) => changeSort(k as SortKey)}
+                align="right"
+                ariaLabel="Sort"
+                leading="Sort"
+              />
             )}
-            <div className="seg" role="group" aria-label="View">
-              <button
-                className={`seg__btn seg__btn--icon ${layout === "grid" ? "seg__btn--on" : ""}`}
-                onClick={() => changeLayout("grid")}
-                title="Grid view"
-                aria-label="Grid view"
-                aria-pressed={layout === "grid"}
-              >
-                <IconGrid size={17} />
-              </button>
-              <button
-                className={`seg__btn seg__btn--icon ${layout === "timeline" ? "seg__btn--on" : ""}`}
-                onClick={() => changeLayout("timeline")}
-                title="Timeline view"
-                aria-label="Timeline view"
-                aria-pressed={layout === "timeline"}
-              >
-                <IconTimeline size={17} />
-              </button>
-            </div>
+            <button
+              className="btn btn--accent btn--lg"
+              onClick={() => setShowAdd(true)}
+            >
+              <IconPlus size={16} /> Add
+            </button>
           </div>
-        )}
+        </div>
+
+        <div className="content">
         {view.kind === "review" ? (
           <Review
             year={view.year}
@@ -293,6 +363,7 @@ export default function App() {
             }
           />
         )}
+        </div>
       </div>
 
       {showAdd && (
@@ -312,12 +383,20 @@ export default function App() {
 
       {showSettings && (
         <SettingsModal
+          libraryPath={libraryPath}
+          libraries={libraries}
+          onSwitchTo={switchToLibrary}
+          onBrowseLibrary={browseForLibrary}
+          onRenameLibrary={(path, name) => setLibraries(renameLibrary(path, name))}
+          onRemoveLibrary={(path) => setLibraries(removeLibrary(path))}
           theme={theme}
           onTheme={changeTheme}
           accent={accent}
           onAccent={changeAccent}
+          mediaOrder={mediaOrder}
           enabledMedia={enabledMedia}
           onToggleMedium={toggleMedium}
+          onReorderMedia={reorderMedia}
           onRefreshAll={refreshAllMetadata}
           hasKey={hasKey}
           onKeyChanged={() => hasTmdbKey().then(setHasKey)}

@@ -1,18 +1,28 @@
 import { useState } from "react";
 
 import { IconClose } from "../components/icons";
+import { MediaChooser } from "../components/MediaChooser";
 import { setRawgKey, setTmdbKey } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
-import { MEDIA, MEDIUM_LABEL, type Medium } from "../lib/types";
+import { basename, type Library } from "../lib/libraries";
+import { type Medium } from "../lib/types";
 import type { Theme } from "../lib/theme";
 
 export function SettingsModal({
+  libraryPath,
+  libraries,
+  onSwitchTo,
+  onBrowseLibrary,
+  onRenameLibrary,
+  onRemoveLibrary,
   theme,
   onTheme,
   accent,
   onAccent,
+  mediaOrder,
   enabledMedia,
   onToggleMedium,
+  onReorderMedia,
   onRefreshAll,
   hasKey,
   onKeyChanged,
@@ -20,12 +30,26 @@ export function SettingsModal({
   onRawgKeyChanged,
   onClose,
 }: {
+  /** The active library folder, shown in the Library section. */
+  libraryPath: string | null;
+  /** Recent libraries (most-recent-first), for the switch list. */
+  libraries: Library[];
+  /** Activate a known recent folder by path. */
+  onSwitchTo: (path: string) => void;
+  /** Open the native picker to add/activate another folder. */
+  onBrowseLibrary: () => void;
+  /** Set a library's nickname. */
+  onRenameLibrary: (path: string, name: string) => void;
+  /** Forget a library (removes it from the recent list only). */
+  onRemoveLibrary: (path: string) => void;
   theme: Theme;
   onTheme: (t: Theme) => void;
   accent: string;
   onAccent: (hex: string) => void;
+  mediaOrder: Medium[];
   enabledMedia: Medium[];
   onToggleMedium: (m: Medium) => void;
+  onReorderMedia: (order: Medium[]) => void;
   onRefreshAll: (
     onProgress?: (done: number, total: number) => void,
   ) => Promise<{ updated: number; failed: number; total: number }>;
@@ -67,6 +91,38 @@ export function SettingsModal({
             title="Close"
           >
             <IconClose />
+          </button>
+        </div>
+
+        {/* Library */}
+        <div className="section">
+          <div className="section__label">Library</div>
+          <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
+            The folder manifest is watching. Keep separate libraries — per person,
+            or one for you and one for someone else on this machine — and switch
+            between them here. Nickname each so they're easy to tell apart;
+            nothing on disk is moved or changed.
+          </p>
+
+          <div className="lib-recents">
+            {libraries.map((l) => (
+              <RecentLibraryRow
+                key={l.path}
+                lib={l}
+                isCurrent={l.path === libraryPath}
+                onSwitch={() => onSwitchTo(l.path)}
+                onRename={(name) => onRenameLibrary(l.path, name)}
+                onRemove={() => onRemoveLibrary(l.path)}
+              />
+            ))}
+          </div>
+
+          <button
+            className="btn btn--accent"
+            style={{ marginTop: 14 }}
+            onClick={onBrowseLibrary}
+          >
+            Open another folder…
           </button>
         </div>
 
@@ -124,26 +180,16 @@ export function SettingsModal({
         <div className="section">
           <div className="section__label">Media types</div>
           <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
-            Choose which categories show up in the header and the Add flow. Hidden
-            types stay on disk untouched — this only tidies the UI.
+            Choose which categories show up in the rail and the Add flow, and drag
+            to reorder them. Hidden types stay on disk untouched — this only tidies
+            the UI.
           </p>
-          <div className="tabs">
-            {MEDIA.map((m) => {
-              const on = enabledMedia.includes(m);
-              const last = on && enabledMedia.length === 1;
-              return (
-                <button
-                  key={m}
-                  className={`tab ${on ? "tab--on" : ""}`}
-                  onClick={() => onToggleMedium(m)}
-                  disabled={last}
-                  title={last ? "Keep at least one type enabled" : undefined}
-                >
-                  {MEDIUM_LABEL[m]}
-                </button>
-              );
-            })}
-          </div>
+          <MediaChooser
+            order={mediaOrder}
+            enabled={enabledMedia}
+            onReorder={onReorderMedia}
+            onToggle={onToggleMedium}
+          />
         </div>
 
         {/* Library metadata */}
@@ -200,8 +246,9 @@ export function SettingsModal({
 }
 
 /** One API-key row: masked when set (with a clear button), an input + Save
- *  otherwise. `onSave("")` clears; the parent re-reads `hasKey` via `onChanged`. */
-function ApiKeyField({
+ *  otherwise. `onSave("")` clears; the parent re-reads `hasKey` via `onChanged`.
+ *  Shared by Settings and the first-run wizard. */
+export function ApiKeyField({
   label,
   blurb,
   placeholder,
@@ -290,6 +337,66 @@ function ApiKeyField({
         >
           {error || note}
         </p>
+      )}
+    </div>
+  );
+}
+
+/** One row in the recent-libraries list: an editable nickname, the folder path,
+ *  and switch/forget actions. The nickname is a local draft committed on blur or
+ *  Enter so we don't churn storage on every keystroke. */
+function RecentLibraryRow({
+  lib,
+  isCurrent,
+  onSwitch,
+  onRename,
+  onRemove,
+}: {
+  lib: Library;
+  isCurrent: boolean;
+  onSwitch: () => void;
+  onRename: (name: string) => void;
+  onRemove: () => void;
+}) {
+  const [draft, setDraft] = useState(lib.name);
+
+  function commit() {
+    const next = draft.trim() || basename(lib.path);
+    setDraft(next);
+    if (next !== lib.name) onRename(next);
+  }
+
+  return (
+    <div className={`lib-recent ${isCurrent ? "is-current" : ""}`}>
+      <input
+        className="input lib-recent__name"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        aria-label="Library nickname"
+        placeholder={basename(lib.path)}
+      />
+      <code className="lib-recent__path" title={lib.path}>
+        {lib.path}
+      </code>
+      {isCurrent ? (
+        <span className="chip lib-recent__current">Current</span>
+      ) : (
+        <div className="lib-recent__actions">
+          <button className="btn btn--sm" onClick={onSwitch}>
+            Switch
+          </button>
+          <button
+            className="btn btn--ghost btn--icon-sm btn--dim"
+            onClick={onRemove}
+            title="Forget this library"
+          >
+            <IconClose size={15} />
+          </button>
+        </div>
       )}
     </div>
   );
