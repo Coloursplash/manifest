@@ -69,8 +69,18 @@ export function EntryDetail({
 
   async function remove() {
     if (!confirm(`Move "${entry.title}" to the library trash?`)) return;
-    const done = await guard(() => deleteEntry(entry.id));
-    if (done !== undefined) onDeleted();
+    // deleteEntry resolves void, so we can't gate on its return — treat "didn't
+    // throw" as success and navigate away.
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteEntry(entry.id);
+      onDeleted();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   // Summary and genres get their own treatment (a paragraph, chips); the total

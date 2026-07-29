@@ -254,10 +254,30 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     and the scroll delta since drag-start is folded into the drag math so the held row stays
     under the cursor. Row toggle reads Show/Hide (full-height, wide hit target).
 
-Known: user has reported bugs in the new views to be triaged; project has no frontend test
-suite yet (planned). Idea on the table: a "wishlist" concept distinct from backlog, gated on
-adding an `owned` tag for games/books (they're not subscription media) — not built yet.
+- **Frontend test suite added.** Vitest + jsdom + React Testing Library (`vitest.config.ts`;
+  `npm test` / `npm run test:watch`). 92 tests, two layers:
+  - **Pure `lib/` logic** — `notes` (block parsing/tags), `timeline` (`buildTimeline` de-dupe +
+    `groupByMonth` bucketing/counts/weekday), `sort` (all 8 comparators + missing-field ordering
+    + persistence), `media` (enabled/order load + legacy migrations), `libraries` (recents
+    cap/rename/basename), `accent` (WCAG ink pick + lighten), `layout`.
+  - **Component/interaction** (`*.test.tsx`) — `Dropdown` (open/select/close/backdrop),
+    `MediaChooser` (Show/Hide toggle + last-enabled guard; the pointer-drag reorder physics
+    aren't exercised — jsdom has no layout), `LibraryGrid` (status bucketing, collapse persist,
+    card→`onOpen`), and `EntryDetail` (status chips, rating, the full log-compose flow, Started
+    date, Trash confirm) with `../lib/api` mocked to assert the exact command each interaction
+    fires. `src/test/setup.ts` stubs the Tauri `invoke`/`convertFileSrc` bridge + jest-dom
+    matchers; `src/test/entry.ts` (`makeEntry`) builds fixtures.
+  - **Caught a real bug:** `EntryDetail`'s Trash gated `onDeleted()` on the return of
+    `deleteEntry` (a `void` command → always `undefined`), so trashing never navigated away.
+    Rewrote `remove()` to treat "didn't throw" as success. Test files are type-checked by the
+    prod `tsc` but tree-shaken out of the app bundle.
 
-v1 core loop complete. Next: import from other trackers, custom media types, frontend tests.
+Known: user has reported bugs in the new views to be triaged. Idea on the table: a "wishlist"
+concept distinct from backlog, gated on adding an `owned` tag for games/books (they're not
+subscription media) — not built yet.
 
-Dev loop: `nix develop -c npm run tauri dev`. Tests: `nix develop -c bash -c 'cd src-tauri && cargo test'`.
+v1 core loop complete. Next: import from other trackers, custom media types, more frontend
+tests (component/view level).
+
+Dev loop: `nix develop -c npm run tauri dev`. Tests: `nix develop -c bash -c 'cd src-tauri &&
+cargo test'` (Rust) and `nix develop -c npm test` (frontend).
