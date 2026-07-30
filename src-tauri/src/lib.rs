@@ -1,7 +1,7 @@
 mod commands;
 mod cover;
 mod fetch;
-mod library;
+pub mod library;
 mod state;
 
 use state::AppState;

@@ -378,5 +378,26 @@ subscription media) — not built yet.
 v1 core loop complete. Next: import from other trackers, custom media types, more frontend
 tests (component/view level).
 
+- **Backend integration suite added.** `src-tauri/tests/` (Cargo's convention — each file is a
+  separate crate linking `manifest_lib`, so it exercises only the public surface). `lib.rs`'s
+  `mod library` is now `pub mod library` so the test crate can reach `library::{store,schema}`.
+  `tests/common/mod.rs` = a `TempLib` RAII temp-dir (no `tempfile` dep, to keep the offline nix
+  build lean). Three suites (12 tests): `store_lifecycle` (create→load→patch→note edit/delete→
+  set_status→trash lifecycle, cross-medium `load_all` sort, clobber refusal, error paths),
+  `format_preservation` (the prime directive: comments/key-order/unknown-key survival through
+  `patch_entry`, notes never rewritten by `append_note`, external hand-edits picked up on read),
+  and `library_scan` (a broken file doesn't blank the shelf, `.trash`/non-toml ignored, tags +
+  unknown "totals" survive). The watcher (`watch.rs`) isn't integration-tested — it needs a live
+  Tauri `AppHandle`.
+
+- **`nix flake check` wired up.** `flake.nix` gains a `checks` output running both suites in the
+  sandbox: `backend` (a test-only `buildRustPackage` — crates vendored from `Cargo.lock`, a stub
+  `../dist/index.html` to satisfy `generate_context!`, `cargo test` offline, never links the app
+  binary) and `frontend` (`buildNpmPackage` + `npm test`). Note flake eval only sees git-tracked
+  files, so newly added tests must be `git add`ed before `nix flake check` picks them up; the
+  frontend `npmDepsHash` in the flake must be refreshed (`nix run nixpkgs#prefetch-npm-deps --
+  package-lock.json`) whenever `package-lock.json` changes.
+
 Dev loop: `nix develop -c npm run tauri dev`. Tests: `nix develop -c bash -c 'cd src-tauri &&
-cargo test'` (Rust) and `nix develop -c npm test` (frontend).
+cargo test'` (Rust) and `nix develop -c npm test` (frontend); or `nix flake check` to run both
+suites hermetically.
