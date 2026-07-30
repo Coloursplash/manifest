@@ -8,6 +8,7 @@ import {
   IconMoon,
   IconFolder,
   IconSearch,
+  MEDIUM_ICON,
 } from "../components/icons";
 import type { Library } from "./libraries";
 import { SORT_KEYS, SORT_LABEL, type SortKey } from "./sort";
@@ -28,6 +29,7 @@ export interface PaletteContext {
   theme: Theme;
   libraries: Library[];
   currentLibraryPath: string;
+  currentMedium: Medium | null;
   currentYear: number;
 
   onAdd: () => void;
@@ -84,7 +86,8 @@ export function buildCommands(ctx: PaletteContext): Command[] {
       title: "Grid view",
       group: "View",
       icon: el(IconGrid),
-      hint: ctx.layout === "grid" ? "on" : "G",
+      hint: "G",
+      active: ctx.layout === "grid",
       perform: () => ctx.onChooseLayout("grid"),
     },
     {
@@ -92,7 +95,8 @@ export function buildCommands(ctx: PaletteContext): Command[] {
       title: "Timeline view",
       group: "View",
       icon: el(IconTimeline),
-      hint: ctx.layout === "timeline" ? "on" : "T",
+      hint: "T",
+      active: ctx.layout === "timeline",
       perform: () => ctx.onChooseLayout("timeline"),
     },
   );
@@ -113,7 +117,7 @@ export function buildCommands(ctx: PaletteContext): Command[] {
       title: `Sort: ${SORT_LABEL[k]}`,
       group: "Sort",
       keywords: "order arrange",
-      hint: ctx.sort === k ? "on" : undefined,
+      active: ctx.sort === k,
       perform: () => ctx.onChangeSort(k),
     });
   }
@@ -125,6 +129,7 @@ export function buildCommands(ctx: PaletteContext): Command[] {
     group: "Filter",
     icon: el(IconSearch),
     hint: "0",
+    active: ctx.currentMedium === null,
     perform: () => ctx.onSelectMedium(null),
   });
   ctx.enabledMedia.forEach((m, i) => {
@@ -133,7 +138,9 @@ export function buildCommands(ctx: PaletteContext): Command[] {
       title: `Show ${MEDIUM_LABEL[m]}`,
       group: "Filter",
       keywords: m,
+      icon: MEDIUM_ICON[m]({ size: 15 }),
       hint: i < 9 ? `${i + 1}` : undefined,
+      active: ctx.currentMedium === m,
       perform: () => ctx.onSelectMedium(m),
     });
   });

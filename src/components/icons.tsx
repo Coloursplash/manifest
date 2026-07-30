@@ -1,6 +1,7 @@
 // Inline stroke icons (Feather-style). Self-contained — no icon font or CDN,
 // in keeping with the offline-first principle. `currentColor` makes them theme.
 import type { ReactNode } from "react";
+import type { Medium } from "../lib/types";
 
 function Svg({ size = 18, children }: { size?: number; children: ReactNode }) {
   return (
@@ -128,3 +129,66 @@ export const IconTimeline = (p: P) => (
     <path d="M10 6h10M10 12h10M10 18h7" />
   </Svg>
 );
+
+// Panel-with-a-spine — the collapse-sidebar toggle.
+export const IconSidebar = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="1.6" />
+    <path d="M9 4v16" />
+  </Svg>
+);
+
+// --- per-medium glyphs -----------------------------------------------------
+export const IconFilm = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="1.5" />
+    <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
+  </Svg>
+);
+export const IconTv = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="6" width="18" height="12" rx="1.5" />
+    <path d="M8 22h8M12 18v4" />
+  </Svg>
+);
+export const IconAnime = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 3l1.9 5.4L19.5 10l-5.6 1.6L12 17l-1.9-5.4L4.5 10l5.6-1.6z" />
+  </Svg>
+);
+export const IconBook = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 4a1 1 0 0 1 1-1h12v15H6a1 1 0 0 0-1 1z" />
+    <path d="M18 18H6a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h12z" />
+  </Svg>
+);
+export const IconManga = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 6C10.4 5 8 4.6 4 5v13c4-.6 6.4-.2 8 1 1.6-1.2 4-1.6 8-1V5c-4-.6-6.4-.2-8 1z" />
+    <path d="M12 6v13" />
+  </Svg>
+);
+export const IconGame = (p: P) => (
+  <Svg {...p}>
+    <rect x="2" y="7" width="20" height="10" rx="5" />
+    <path d="M6.5 12h3M8 10.5v3" />
+    <path d="M15.5 11h.01M17.5 13h.01" />
+  </Svg>
+);
+export const IconMusic = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 18V6l11-2v12" />
+    <circle cx="6" cy="18" r="3" />
+    <circle cx="17" cy="16" r="3" />
+  </Svg>
+);
+
+export const MEDIUM_ICON: Record<Medium, (p: P) => ReactNode> = {
+  film: IconFilm,
+  tv: IconTv,
+  anime: IconAnime,
+  book: IconBook,
+  manga: IconManga,
+  game: IconGame,
+  music: IconMusic,
+};

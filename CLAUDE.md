@@ -320,6 +320,38 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     layout, which shifted the row on every view switch) — timeline ignores it. Tests:
     `OmniBox.test.tsx` (filter vs `>` command mode, un-doubled `>`, fuzzy, click/Enter run, Esc
     restore, ref `commandMode`). 117 frontend tests.
+  - **Floating pill + unified search/add + collapsible rail.** Removed the header bar entirely;
+    `OmniBox` now floats as a centred pill over the content (`.omnibar`, `position:absolute`
+    top-centre in the now-`relative` `.main`; `.content` gains top padding so nothing hides
+    under it; pill `z-index:15`/panel `16`, below the modal scrim). A `+` (`.omnibar__add`)
+    button sits beside it. **Search unifies browse + add**: in plain-text mode OmniBox shows a
+    dropdown of matching entries to jump to **plus** an `Add "<query>"…` row (`App.filterResults`
+    fuzzy-ranks `filtered`, caps 6, appends the add action); picking Add opens the flow prefilled
+    via the new `AddEntryModal` `initialQuery` prop (seeds its search + auto-runs it). Dropdown
+    is focus-gated (`focused` state; blur exits command mode). The `'on'` marker is gone —
+    `Command.active` renders a leading `✓` (`.cmdk__check`) and an accent title (`.is-current`);
+    `paletteCommands` sets `active` for the current layout/sort/medium (needs `currentMedium` in
+    ctx) and keeps hotkey hints (now higher-contrast `.cmdk__hint`). **Rail collapses to icons**:
+    `lib/rail.ts` persists the flag, a toggle (`IconSidebar`) flips `rail--collapsed` (62px,
+    labels/legends/spec/Sort hidden, brand → `M.`); every rail item now has an icon
+    (`MEDIUM_ICON` map: `IconFilm/Tv/Anime/Book/Manga/Game/Music`), and Sort moved from the
+    header into the rail's View group (expanded only). Tests: OmniBox filter-results + `✓`,
+    `lib/rail`. 121 frontend tests; `npm run build` clean.
+  - **Add flow joined to the pill (one input, one menu).** The centred Add modal is gone from
+    the main flow: `OmniBox` gains an **add mode** (third mode alongside filter/command) — the
+    pill's single input becomes the add search, and `renderAdd(query, close)` fills the dropdown
+    with the Add UI. `AddEntryModal` gained `variant="panel"` + a controlled `search` prop:
+    `PanelShell`/`ModalShell` wrappers, its own search field hidden (the pill drives it via a
+    300ms-debounced effect), `ManualAdd` `hideInput`. All add entry points route through
+    `omniRef.addMode(query)` (＋ button, `n`, ⌘K ▸ Add entry, and the search dropdown's "Add …"
+    row, which OmniBox appends itself and intercepts). Entering add mode **clears the library
+    filter** (so the bar is empty on exit — fixes the stuck-query bug); a `mousedown` click-away
+    (not a backdrop element, which would cover the input) + Esc close it. **Dropdown centring
+    bug fixed**: `.omnibar` centred via flex + `pointer-events` instead of `translateX(-50%)` —
+    a transformed ancestor was becoming the containing block for the `position:fixed` dropdown
+    and shoving it to the right. Add panel is wider (clamped to viewport) + accent-topped
+    (`.omni__panel--add`, `.addpanel*`). Tests: OmniBox add-mode entry (appended row + clears
+    filter) + `addMode()` ref. 123 frontend tests; build clean.
 
 Known: user has reported bugs in the new views to be triaged. Idea on the table: a "wishlist"
 concept distinct from backlog, gated on adding an `owned` tag for games/books (they're not

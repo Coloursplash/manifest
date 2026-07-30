@@ -373,35 +373,54 @@ input[type="date"] {
 /* The main column sits right of the rail. min-width:0 lets the grid inside
    shrink instead of forcing the whole window wider. */
 .main {
+  position: relative; /* anchors the floating .omnibar */
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
   height: 100%;
 }
-.topbar {
+/* --- floating command/search pill --- */
+/* Sits centred over the content (no header bar). `.content` reserves top room
+   so nothing hides beneath it at the top of the scroll. */
+.omnibar {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  /* below the modal scrim (z 20) so Add/Settings cover it */
+  z-index: 15;
   display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 14px 22px;
-  background: var(--panel);
-  border-bottom: 2px solid var(--line-2);
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  /* Centre via flex, NOT transform — a transformed ancestor would become the
+     containing block for the dropdown's position:fixed and shove it off-centre.
+     The bar itself ignores pointer events so content behind the gaps stays live. */
+  pointer-events: none;
 }
-/* Empty left gutter; carries the same flex weight as the right actions so the
-   centred search box stays centred no matter how wide the actions get. */
-.topbar__gutter {
-  flex: 1 1 0;
-  min-width: 0;
+.omnibar > * {
+  pointer-events: auto;
 }
-/* Right-hand controls (Sort, Add). Equal flex weight to the gutter. */
-.topbar__actions {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 12px;
+.omnibar__add {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--r);
+  box-shadow: 3px 3px 0 var(--hard);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.omnibar__add:hover {
+  background: var(--accent-hi);
+}
+.omnibar__add:active {
+  transform: translateY(1px);
 }
 
 /* --- left function rail --- */
@@ -471,6 +490,55 @@ input[type="date"] {
 .rail__settings {
   flex: none;
   color: var(--muted);
+}
+.rail__collapse {
+  flex: none;
+  color: var(--faint);
+}
+.railkey__label {
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* Sort control docked in the View group (expanded rail only). */
+.rail-sort {
+  padding-top: 2px;
+}
+.rail-sort .dropdown,
+.rail-sort .dropdown__btn {
+  width: 100%;
+}
+.rail-sort .dropdown__btn {
+  justify-content: flex-start;
+}
+
+/* --- collapsed (icons-only) rail --- */
+.brand__mark {
+  display: none;
+}
+.rail--collapsed {
+  width: 62px;
+  gap: 16px;
+  padding: 18px 8px;
+  align-items: stretch;
+}
+.rail--collapsed .railkey {
+  justify-content: center;
+  gap: 0;
+  padding: 0.62em 0;
+}
+.rail--collapsed .railkey__label,
+.rail--collapsed .rail__legend,
+.rail--collapsed .brand__spec,
+.rail--collapsed .brand__full,
+.rail--collapsed .rail-sort {
+  display: none;
+}
+.rail--collapsed .brand__mark {
+  display: inline;
+}
+.rail--collapsed .brand {
+  align-items: center;
+  padding: 0 0 14px;
 }
 
 /* --- brand plate --- */
@@ -718,36 +786,23 @@ body.is-reordering {
   cursor: default;
 }
 
-.topbar__spacer {
-  flex: 1;
-}
-
-/* Every control in the header shares one height so the row is a clean band. */
-.topbar__actions .btn,
-.topbar__actions .dropdown__btn,
-.searchbox {
-  height: var(--control-h);
-}
-.topbar__actions .btn--lg {
-  padding: 0 18px; /* height is fixed; only horizontal padding matters now */
-  font-size: 0.8rem;
-}
-.topbar__actions .dropdown__btn {
-  padding: 0 12px;
-}
-
-/* Search / filter field — icon, input, and a /-hint or clear button. */
+/* Search / filter field — icon, input, and a /-hint or clear button. Floats,
+   so it carries a solid fill + offset shadow to read above the content. */
 .searchbox {
   flex: 0 1 auto;
   display: flex;
   align-items: center;
   gap: 9px;
-  width: min(640px, 58vw);
+  width: min(460px, 52vw);
+  height: var(--control-h);
   padding: 0 12px;
-  background: var(--panel-2);
-  border: 1.5px solid var(--line);
+  background: var(--panel);
+  border: 1.5px solid var(--line-2);
   border-radius: var(--r);
+  box-shadow: 3px 3px 0 var(--hard);
   transition: border-color 0.1s ease;
+  /* No drag-highlighting of the field chrome or its text. */
+  user-select: none;
 }
 .searchbox:focus-within {
   border-color: var(--accent);
@@ -787,6 +842,7 @@ body.is-reordering {
   font-family: var(--mono);
   font-size: 0.85rem;
   color: var(--fg);
+  user-select: none;
 }
 .searchbox__input::placeholder {
   color: var(--faint);
@@ -816,16 +872,12 @@ body.is-reordering {
   color: var(--fg);
 }
 
-/* Command-mode dropdown, hung under the search box (position:fixed, measured off
+/* Search/command dropdown, hung under the field (position:fixed, measured off
    the field so it escapes any overflow clipping). Reuses the .cmdk__* row styles. */
-.omni__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 45;
-}
 .omni__panel {
   position: fixed;
-  z-index: 46;
+  z-index: 16; /* above content + the pill, below the modal scrim (20) */
+  user-select: none; /* arrowing through rows shouldn't select their text */
   max-width: 92vw;
   max-height: 60vh;
   overflow-y: auto;
@@ -835,6 +887,45 @@ body.is-reordering {
   border-radius: var(--r);
   box-shadow: 6px 6px 0 var(--hard);
 }
+/* Add mode: the panel is the Add flow joined to the pill — roomier, accent-topped. */
+.omni__panel--add {
+  max-height: 74vh;
+  padding: 0;
+  border-top: 3px solid var(--accent);
+}
+.addpanel {
+  padding: 16px;
+}
+.addpanel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--line);
+}
+.addpanel__title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Add-mode field marker (＋). */
+.searchbox--add {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.searchbox__chev--add {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  color: var(--accent);
+  font-size: 0;
+  transform: none;
+}
 
 .content {
   /* Only the main view scrolls — so the scrollbar lives under the header, not
@@ -843,7 +934,8 @@ body.is-reordering {
   flex: 1;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  padding: 26px 22px 56px;
+  /* extra top room so content clears the floating search pill */
+  padding: 72px 22px 56px;
   background: var(--bg);
 }
 
@@ -1620,6 +1712,16 @@ body.is-reordering {
   border-color: var(--line-2);
   color: var(--fg);
 }
+.lib-section__hint {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+.lib-section__head:hover .lib-section__hint {
+  color: var(--accent);
+}
 .lib-section__body {
   padding: 22px 0 30px;
 }
@@ -1633,6 +1735,69 @@ body.is-reordering {
   letter-spacing: 0.1em;
   color: var(--muted);
   margin: 0 0 14px;
+}
+
+/* --- shelf (one-row category preview) --- */
+/* A single full-width row that scrolls sideways; expands to .grid on click. */
+.shelf {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 12px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+.shelf .card {
+  flex: 0 0 150px;
+  width: 150px;
+  scroll-snap-align: start;
+}
+.shelf__more {
+  flex: 0 0 150px;
+  aspect-ratio: 2 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font: inherit;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: border-color 0.1s ease, color 0.1s ease;
+}
+.shelf__more:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.shelf__more-n {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+.shelf__more-label {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+/* Slim themed horizontal scrollbar for the shelf. */
+.shelf::-webkit-scrollbar {
+  height: 8px;
+}
+.shelf::-webkit-scrollbar-track {
+  background: transparent;
+}
+.shelf::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+.shelf:hover::-webkit-scrollbar-thumb {
+  background: var(--line-2);
 }
 
 /* --- timeline (diary) --- */
@@ -2041,6 +2206,18 @@ body.is-reordering {
   opacity: 0.4;
   cursor: default;
 }
+/* Leading ✓ slot: marks the current view/sort/filter. Always reserves width so
+   titles line up whether or not a row is the active choice. */
+.cmdk__check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  flex: none;
+  color: var(--accent);
+}
+.cmdk__item.is-active .cmdk__check {
+  color: var(--accent-ink);
+}
 .cmdk__itemicon {
   display: grid;
   place-items: center;
@@ -2048,6 +2225,13 @@ body.is-reordering {
   color: var(--muted);
 }
 .cmdk__item.is-active .cmdk__itemicon {
+  color: var(--accent-ink);
+}
+/* Current choice reads bolder even when not the arrow-key selection. */
+.cmdk__item.is-current .cmdk__title {
+  color: var(--accent);
+}
+.cmdk__item.is-active.is-current .cmdk__title {
   color: var(--accent-ink);
 }
 .cmdk__title {
@@ -2082,15 +2266,18 @@ body.is-reordering {
 }
 .cmdk__hint {
   font-family: var(--mono);
-  font-size: 0.64rem;
-  color: var(--faint);
-  border: 1px solid var(--line);
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
   border-radius: var(--r);
-  padding: 1px 5px;
+  padding: 2px 6px;
   flex: none;
 }
 .cmdk__item.is-active .cmdk__hint {
   color: var(--accent-ink);
+  background: transparent;
   border-color: var(--accent-ink);
 }
 .cmdk__empty {

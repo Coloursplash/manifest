@@ -31,6 +31,8 @@ export interface Command {
   icon?: ReactNode;
   /** Right-aligned hint, e.g. a shortcut or "↵". */
   hint?: string;
+  /** Marks the current choice (view/sort/filter) — rendered as a leading ✓. */
+  active?: boolean;
   disabled?: boolean;
   /** Terminal action. Palette closes afterwards unless `keepOpen`. */
   perform?: () => void | Promise<void>;

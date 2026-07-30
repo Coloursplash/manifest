@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createRef, useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { OmniBox, type OmniBoxHandle } from "./OmniBox";
@@ -8,9 +8,24 @@ import type { Command } from "./CommandPalette";
 
 // The filter value is controlled by the parent (in the app, App's `query`), so
 // wrap OmniBox in local state to exercise real typing/accumulation.
-function Harness({ list, initial = "" }: { list: Command[]; initial?: string }) {
+function Harness({
+  list,
+  initial = "",
+  filterResults,
+}: {
+  list: Command[];
+  initial?: string;
+  filterResults?: (q: string) => Command[];
+}) {
   const [filter, setFilter] = useState(initial);
-  return <OmniBox filter={filter} onFilter={setFilter} commands={list} />;
+  return (
+    <OmniBox
+      filter={filter}
+      onFilter={setFilter}
+      commands={list}
+      filterResults={filterResults}
+    />
+  );
 }
 
 function commands(): { list: Command[]; grid: any; add: any } {
@@ -88,7 +103,7 @@ describe("OmniBox", () => {
     // A live filter of "dune"; ⌘K (commandMode) enters ">" over it.
     render(<OmniBox ref={ref} filter="dune" onFilter={vi.fn()} commands={list} />);
 
-    ref.current!.commandMode();
+    act(() => ref.current!.commandMode());
     await user.keyboard("so");
     expect(screen.getByRole("listbox")).toBeInTheDocument();
 
@@ -103,7 +118,7 @@ describe("OmniBox", () => {
     const { list } = commands();
     render(<OmniBox ref={ref} filter="" onFilter={vi.fn()} commands={list} />);
 
-    ref.current!.commandMode();
+    act(() => ref.current!.commandMode());
     expect(await screen.findByRole("listbox")).toBeInTheDocument();
     // the ">" lives in the icon, not the text — so the field is empty
     expect(screen.getByRole("textbox")).toHaveValue("");
@@ -119,5 +134,92 @@ describe("OmniBox", () => {
     // command mode is on (dropdown), but the text is just "gr" — no leading ">"
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     expect(box).toHaveValue("gr");
+  });
+
+  it("shows filter-mode results (entries + Add) from filterResults and runs them", async () => {
+    const user = userEvent.setup();
+    const { list } = commands();
+    const open = vi.fn();
+    const addWith = vi.fn();
+    const filterResults = (q: string): Command[] => [
+      { id: "jump.dune", title: "Dune", subtitle: "Films · 2021", group: "Library", perform: open },
+      { id: "omni.add", title: `Add “${q}”…`, group: "New", perform: () => addWith(q) },
+    ];
+    render(<Harness list={list} filterResults={filterResults} />);
+
+    const box = screen.getByRole("textbox");
+    await user.type(box, "dune");
+    // a dropdown appears with the entry jump + the Add action
+    expect(screen.getByRole("option", { name: /Dune/ })).toBeInTheDocument();
+    const addRow = screen.getByRole("option", { name: /Add .dune/ });
+    expect(addRow).toBeInTheDocument();
+
+    await user.click(addRow);
+    expect(addWith).toHaveBeenCalledWith("dune");
+  });
+
+  it("expands into add mode from the appended Add row and clears the filter", async () => {
+    const user = userEvent.setup();
+    const { list } = commands();
+    function H() {
+      const [filter, setFilter] = useState("dune");
+      return (
+        <>
+          <span data-testid="filter">{filter}</span>
+          <OmniBox
+            filter={filter}
+            onFilter={setFilter}
+            commands={list}
+            filterResults={() => []}
+            renderAdd={(q) => <div data-testid="addpanel">ADD:{q}</div>}
+          />
+        </>
+      );
+    }
+    render(<H />);
+
+    const box = screen.getByRole("textbox");
+    await user.click(box); // focus → the appended "Add …" row shows
+    const addRow = screen.getByRole("option", { name: /Add .dune/ });
+    await user.click(addRow);
+
+    // the add UI is now joined to the pill, seeded with the query…
+    expect(screen.getByTestId("addpanel")).toHaveTextContent("ADD:dune");
+    // …and the library filter has been cleared
+    expect(screen.getByTestId("filter")).toHaveTextContent("");
+  });
+
+  it("addMode() on the ref opens add mode seeded with a title", async () => {
+    const ref = createRef<OmniBoxHandle>();
+    const { list } = commands();
+    render(
+      <OmniBox
+        ref={ref}
+        filter=""
+        onFilter={vi.fn()}
+        commands={list}
+        renderAdd={(q) => <div data-testid="addpanel">ADD:{q}</div>}
+      />,
+    );
+
+    act(() => ref.current!.addMode("dune"));
+    expect(await screen.findByTestId("addpanel")).toHaveTextContent("ADD:dune");
+    expect(screen.getByRole("textbox")).toHaveValue("dune");
+  });
+
+  it("renders a ✓ on the active command", async () => {
+    const user = userEvent.setup();
+    const list: Command[] = [
+      { id: "grid", title: "Grid view", group: "View", active: true, perform: vi.fn() },
+      { id: "timeline", title: "Timeline view", group: "View", perform: vi.fn() },
+    ];
+    render(<OmniBox filter="" onFilter={vi.fn()} commands={list} />);
+    await user.type(screen.getByRole("textbox"), ">view");
+
+    const gridRow = screen.getByRole("option", { name: /Grid view/ });
+    const timelineRow = screen.getByRole("option", { name: /Timeline view/ });
+    // the active row carries the marker class; the inactive one doesn't
+    expect(gridRow.className).toContain("is-current");
+    expect(timelineRow.className).not.toContain("is-current");
   });
 });

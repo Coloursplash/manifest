@@ -57,7 +57,7 @@ describe("LibraryGrid", () => {
     expect(screen.getByRole("button", { name: /Backlog/ })).toHaveTextContent("2");
   });
 
-  it("In Progress is open by default; folded sections hide their cards", () => {
+  it("shows every category as a shelf by default, with all cards visible", () => {
     render(
       <LibraryGrid
         entries={[
@@ -68,13 +68,19 @@ describe("LibraryGrid", () => {
         emptyHint=""
       />,
     );
-    // active section open → its card title is visible
+    // nothing is hidden now — both categories render their cards in a shelf
     expect(cardTitle("Active One")).toBeInTheDocument();
-    // backlog defaults folded → its card is not rendered
-    expect(cardTitle("Backlog One")).not.toBeInTheDocument();
+    expect(cardTitle("Backlog One")).toBeInTheDocument();
+    // …and start collapsed: a one-row shelf, not the full grid
+    expect(screen.getByRole("button", { name: /Backlog/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(document.querySelector(".shelf")).toBeTruthy();
+    expect(document.querySelector(".grid")).toBeFalsy();
   });
 
-  it("clicking a section header toggles it and persists the state", async () => {
+  it("clicking a section header expands the shelf into a grid and persists", async () => {
     const user = userEvent.setup();
     render(
       <LibraryGrid
@@ -85,14 +91,36 @@ describe("LibraryGrid", () => {
     );
     const head = screen.getByRole("button", { name: /Backlog/ });
     expect(head).toHaveAttribute("aria-expanded", "false");
+    expect(document.querySelector(".shelf")).toBeTruthy();
 
     await user.click(head);
     expect(head).toHaveAttribute("aria-expanded", "true");
+    // now a full wrapping grid, card still visible
+    expect(document.querySelector(".grid")).toBeTruthy();
     expect(cardTitle("Backlog One")).toBeInTheDocument();
 
     // persisted to localStorage under the bucket key (still "watchlist")
     const saved = JSON.parse(localStorage.getItem("manifest-sections") ?? "{}");
     expect(saved.watchlist).toBe(true);
+  });
+
+  it("caps a big shelf with a +N more tile that expands the category", async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 30 }, (_, i) =>
+      makeEntry({ title: `Want ${i}`, status: "want" }),
+    );
+    render(<LibraryGrid entries={many} onOpen={vi.fn()} emptyHint="" />);
+
+    // 30 items, preview caps at 24 → a "+6 more" tile
+    const more = screen.getByRole("button", { name: /more/i });
+    expect(more).toHaveTextContent("+6");
+
+    await user.click(more);
+    expect(screen.getByRole("button", { name: /Backlog/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(document.querySelector(".grid")).toBeTruthy();
   });
 
   it("clicking a card calls onOpen with the entry id", async () => {
@@ -106,8 +134,8 @@ describe("LibraryGrid", () => {
     expect(onOpen).toHaveBeenCalledWith(entry.id);
   });
 
-  it("restores collapse state from localStorage on mount", () => {
-    // force the Done section open even though it defaults folded
+  it("restores expanded state from localStorage on mount", () => {
+    // force the Done section expanded even though it defaults to a shelf
     localStorage.setItem("manifest-sections", JSON.stringify({ done: true }));
     render(
       <LibraryGrid
@@ -116,6 +144,8 @@ describe("LibraryGrid", () => {
         emptyHint=""
       />,
     );
+    // rendered as the full grid, not a shelf
+    expect(document.querySelector(".grid")).toBeTruthy();
     expect(cardTitle("Done Card")).toBeInTheDocument();
   });
 });

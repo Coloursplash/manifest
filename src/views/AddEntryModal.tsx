@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { Cover } from "../components/Cover";
 import { IconBack, IconClose, IconSearch } from "../components/icons";
@@ -42,6 +42,9 @@ export function AddEntryModal({
   hasRawgKey,
   enabledMedia,
   initialMedium,
+  initialQuery = "",
+  variant = "modal",
+  search,
   onClose,
   onCreated,
   onNeedKey,
@@ -52,14 +55,24 @@ export function AddEntryModal({
   /** The active header filter. When set, the modal opens locked to it and
    *  hides its own category picker; when null ("All") it shows the picker. */
   initialMedium: Medium | null;
+  /** A title typed into the search bar's "Add …" action — prefilled + searched. */
+  initialQuery?: string;
+  /** "modal" = centred dialog with its own search field; "panel" = joined to
+   *  the OmniBox pill, its search driven by the pill's single input (`search`). */
+  variant?: "modal" | "panel";
+  /** In panel mode, the live query from the pill. */
+  search?: string;
   onClose: () => void;
   onCreated: (e: Entry) => void;
   onNeedKey: () => void;
 }) {
+  const panel = variant === "panel";
   const [medium, setMedium] = useState<Medium>(
     initialMedium ?? enabledMedia[0],
   );
-  const [query, setQuery] = useState("");
+  const [ownQuery, setQuery] = useState(initialQuery);
+  // In panel mode the pill owns the query; in modal mode it's internal.
+  const query = panel ? search ?? "" : ownQuery;
   const [results, setResults] = useState<Candidate[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -107,6 +120,27 @@ export function AddEntryModal({
       setLoading(false);
     }
   }
+
+  // Modal: prefilled from the search bar's "Add …" — run it once on open.
+  useEffect(() => {
+    if (!panel && initialQuery.trim() && !keyMissing(medium)) runSearch(medium, initialQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Panel: the pill drives the query, so search as it changes (debounced), and
+  // clear results when it's emptied.
+  useEffect(() => {
+    if (!panel) return;
+    const q = query.trim();
+    if (!q || keyMissing(medium)) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    const t = setTimeout(() => runSearch(medium, q), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, query, medium]);
 
   function switchMedium(m: Medium) {
     setMedium(m);
@@ -160,24 +194,13 @@ export function AddEntryModal({
     }
   }
 
-  return (
-    <div className="scrim" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h3>
-            {initialMedium
-              ? `Add ${MEDIUM_LABEL[medium]} to library`
-              : "Add to library"}
-          </h3>
-          <button
-            className="btn btn--ghost btn--icon-sm"
-            onClick={onClose}
-            title="Close"
-          >
-            <IconClose />
-          </button>
-        </div>
+  const Shell = panel ? PanelShell : ModalShell;
 
+  return (
+    <Shell
+      title={initialMedium ? `Add ${MEDIUM_LABEL[medium]} to library` : "Add to library"}
+      onClose={onClose}
+    >
         {preview ? (
           <CandidatePreview
             candidate={preview.c}
@@ -225,36 +248,45 @@ export function AddEntryModal({
               medium={medium}
               query={query}
               setQuery={setQuery}
+              hideInput={panel}
               added={!!added[`manual:${query.trim()}`]}
               onAdd={addManual}
             />
           </div>
         ) : (
           <>
-            <form
-              className="row"
-              onSubmit={(e) => {
-                e.preventDefault();
-                runSearch(medium, query);
-              }}
-            >
-              <input
-                className="input"
-                style={{ fontSize: "0.95rem", padding: "0.75em 0.9em" }}
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search ${MEDIUM_LABEL[medium].toLowerCase()}…`}
-              />
-              <button
-                className="btn btn--lg"
-                type="submit"
-                disabled={loading}
-                title="Search"
+            {/* Panel mode has no search field — the pill's input drives it. */}
+            {!panel && (
+              <form
+                className="row"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  runSearch(medium, query);
+                }}
               >
-                {loading ? "…" : <IconSearch size={18} />}
-              </button>
-            </form>
+                <input
+                  className="input"
+                  style={{ fontSize: "0.95rem", padding: "0.75em 0.9em" }}
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={`Search ${MEDIUM_LABEL[medium].toLowerCase()}…`}
+                />
+                <button
+                  className="btn btn--lg"
+                  type="submit"
+                  disabled={loading}
+                  title="Search"
+                >
+                  {loading ? "…" : <IconSearch size={18} />}
+                </button>
+              </form>
+            )}
+            {panel && loading && (
+              <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 6px" }}>
+                Searching…
+              </p>
+            )}
 
             <div className="sgrid">
               {results.map((c, i) => {
@@ -327,6 +359,7 @@ export function AddEntryModal({
                   medium={medium}
                   query={query}
                   setQuery={setQuery}
+                  hideInput={panel}
                   added={!!added[`manual:${query.trim()}`]}
                   onAdd={addManual}
                 />
@@ -338,7 +371,55 @@ export function AddEntryModal({
         )}
 
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
+    </Shell>
+  );
+}
+
+/** Centred dialog wrapper — the classic Add modal. */
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <h3>{title}</h3>
+          <button className="btn btn--ghost btn--icon-sm" onClick={onClose} title="Close">
+            <IconClose />
+          </button>
+        </div>
+        {children}
       </div>
+    </div>
+  );
+}
+
+/** Dropdown wrapper — the Add flow joined to the OmniBox pill (no scrim; the
+ *  pill's backdrop handles outside-click). */
+function PanelShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="addpanel">
+      <div className="addpanel__head">
+        <span className="addpanel__title">{title}</span>
+        <button className="btn btn--ghost btn--icon-sm" onClick={onClose} title="Close">
+          <IconClose />
+        </button>
+      </div>
+      {children}
     </div>
   );
 }
@@ -459,22 +540,27 @@ function ManualAdd({
   setQuery,
   added,
   onAdd,
+  hideInput = false,
 }: {
   medium: Medium;
   query: string;
   setQuery: (s: string) => void;
   added: boolean;
   onAdd: (status: Status) => void;
+  /** Panel mode: the pill owns the title, so don't render a second input. */
+  hideInput?: boolean;
 }) {
   return (
     <div className="row wrap">
-      <input
-        className="input"
-        style={{ flex: 1, minWidth: 160 }}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Title"
-      />
+      {!hideInput && (
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 160 }}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Title"
+        />
+      )}
       {added ? (
         <span className="btn" style={{ color: "var(--st-done)" }}>
           ✓ Added

@@ -6,35 +6,55 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 
 import { fuzzyMatch } from "../lib/fuzzy";
 import type { Command } from "./CommandPalette";
-import { IconClose, IconSearch } from "./icons";
+import { IconCheck, IconClose, IconPlus, IconSearch } from "./icons";
 
-// A single centered header field that does double duty, VSCode-style:
-//   • normal text  → filters the library (drives the `filter` prop)
-//   • leading ">"  → command mode: fuzzy-search the command list in a dropdown
-// Command mode is explicit state, and the ">" is represented by the ›-icon on
-// the left rather than kept in the text — so the character never doubles up.
+// The one floating field that unifies every entry point, VSCode-style:
+//   • text        → filter, plus a dropdown of matching entries and an "Add …"
+//                   row that expands the SAME field into add mode
+//   • leading ">" → command mode: fuzzy-search the command list
+//   • add mode    → the field becomes the add search; `renderAdd` fills the
+//                   dropdown with the add UI (one input, one joined menu)
+// The mode's marker (›, +) shows as the left icon; the trigger char is never
+// kept in the text.
 
 export interface OmniBoxHandle {
   focus: () => void;
-  /** Focus and drop straight into command mode. */
   commandMode: () => void;
+  /** Open add mode, optionally seeded with a title. */
+  addMode: (query?: string) => void;
 }
+
+const ADD_ID = "__omni_add__";
+// Cap rendered rows so each keystroke stays cheap — a huge list (every library
+// entry is a command) makes per-key re-renders lag and arrow events pile up.
+const MAX_RESULTS = 50;
 
 export const OmniBox = forwardRef<
   OmniBoxHandle,
   {
     filter: string;
     onFilter: (v: string) => void;
+    /** Commands for ">" mode. */
     commands: Command[];
+    /** Matching entries to jump to, for plain-text mode. */
+    filterResults?: (q: string) => Command[];
+    /** The add UI, rendered into the dropdown when in add mode. */
+    renderAdd?: (query: string, close: () => void) => ReactNode;
     placeholder?: string;
   }
->(function OmniBox({ filter, onFilter, commands, placeholder = "Search, or > for commands" }, ref) {
-  const [mode, setMode] = useState<"filter" | "command">("filter");
+>(function OmniBox(
+  { filter, onFilter, commands, filterResults, renderAdd, placeholder = "Search, or > for commands" },
+  ref,
+) {
+  const [mode, setMode] = useState<"filter" | "command" | "add">("filter");
   const [cmd, setCmd] = useState(""); // command query, WITHOUT the ">" prefix
+  const [addq, setAddq] = useState(""); // add query
+  const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(0);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,49 +62,110 @@ export const OmniBox = forwardRef<
   const listRef = useRef<HTMLDivElement>(null);
 
   const cmdMode = mode === "command";
-  const value = cmdMode ? cmd : filter;
+  const addModeOn = mode === "add";
+  const value = cmdMode ? cmd : addModeOn ? addq : filter;
 
   const results = useMemo(() => {
-    if (!cmdMode) return [] as Command[];
-    const q = cmd.trim();
-    if (!q) return commands;
-    return commands
-      .map((c) => ({
-        c,
-        m: fuzzyMatch(q, `${c.title} ${c.subtitle ?? ""} ${c.keywords ?? ""}`),
-      }))
-      .filter((r) => r.m !== null)
-      .sort((a, b) => b.m!.score - a.m!.score)
-      .map((r) => r.c);
-  }, [cmdMode, cmd, commands]);
+    if (cmdMode) {
+      const q = cmd.trim();
+      if (!q) return commands.slice(0, MAX_RESULTS);
+      return commands
+        .map((c) => ({
+          c,
+          m: fuzzyMatch(q, `${c.title} ${c.subtitle ?? ""} ${c.keywords ?? ""}`),
+        }))
+        .filter((r) => r.m !== null)
+        .sort((a, b) => b.m!.score - a.m!.score)
+        .slice(0, MAX_RESULTS)
+        .map((r) => r.c);
+    }
+    if (addModeOn) return [] as Command[];
+    const q = filter.trim();
+    if (!q) return [] as Command[];
+    const jumps = filterResults ? filterResults(q) : [];
+    // Append the "Add …" row that expands this field into add mode.
+    return renderAdd
+      ? [
+          ...jumps,
+          {
+            id: ADD_ID,
+            title: `Add “${q}”…`,
+            group: "New",
+            icon: IconPlus({ size: 15 }),
+          } as Command,
+        ]
+      : jumps;
+  }, [cmdMode, addModeOn, cmd, commands, filter, filterResults, renderAdd]);
+
+  const panelOpen = addModeOn ? true : focused && (cmdMode || results.length > 0);
 
   useEffect(() => {
     setActive((i) => Math.min(Math.max(i, 0), Math.max(results.length - 1, 0)));
   }, [results.length]);
-  useEffect(() => setActive(0), [cmd]);
+  useEffect(() => setActive(0), [cmd, filter, mode]);
 
   // Measure the field so the dropdown can be position:fixed (escapes clipping).
+  // Add mode gets a wider, clamped panel to fit the cover grid.
   useLayoutEffect(() => {
-    if (cmdMode && boxRef.current) {
-      const r = boxRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 6, left: r.left, width: r.width });
-    } else {
+    if (!panelOpen || !boxRef.current) {
       setPos(null);
+      return;
     }
-  }, [cmdMode, value]);
+    const r = boxRef.current.getBoundingClientRect();
+    if (addModeOn) {
+      const w = Math.min(560, window.innerWidth - 24);
+      const left = Math.max(12, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - 12 - w));
+      setPos({ top: r.bottom + 6, left, width: w });
+    } else {
+      setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    }
+  }, [panelOpen, addModeOn, value]);
 
   useLayoutEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`);
     el?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
 
+  // Add mode: close when clicking anywhere outside the pill + its panel. The
+  // panel is a DOM descendant of the box, so contains() covers it too. A
+  // listener (not a backdrop element) avoids covering the input.
+  useEffect(() => {
+    if (!addModeOn) return;
+    function onDown(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setMode("filter");
+        setAddq("");
+      }
+    }
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [addModeOn]);
+
+  function enterAdd(query: string) {
+    setMode("add");
+    setAddq(query);
+    onFilter(""); // clear the library filter so the bar is empty on exit
+    setFocused(true);
+    inputRef.current?.focus();
+  }
+  function exitAdd() {
+    setMode("filter");
+    setAddq("");
+  }
+  function exitCommand() {
+    setMode("filter");
+    setCmd("");
+  }
+
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
     commandMode: () => {
       setMode("command");
       setCmd("");
+      setFocused(true);
       inputRef.current?.focus();
     },
+    addMode: (query = "") => enterAdd(query),
   }));
 
   function change(v: string) {
@@ -92,8 +173,10 @@ export const OmniBox = forwardRef<
       setCmd(v);
       return;
     }
-    // A leading ">" from the filter box flips into command mode; the ">" itself
-    // is consumed by the mode (shown as the ›-icon), not kept in the text.
+    if (addModeOn) {
+      setAddq(v);
+      return;
+    }
     if (v.startsWith(">")) {
       setMode("command");
       setCmd(v.slice(1));
@@ -101,84 +184,131 @@ export const OmniBox = forwardRef<
     }
     onFilter(v);
   }
-  function exitCommand() {
-    setMode("filter");
-    setCmd("");
-  }
   function clear() {
     if (cmdMode) exitCommand();
+    else if (addModeOn) setAddq("");
     else onFilter("");
     inputRef.current?.focus();
   }
-  function run(cmd: Command | undefined) {
-    if (!cmd || cmd.disabled) return;
-    cmd.perform?.();
-    exitCommand();
+  function run(c: Command | undefined) {
+    if (!c || c.disabled) return;
+    if (c.id === ADD_ID) {
+      enterAdd(filter.trim());
+      return;
+    }
+    c.perform?.();
+    if (cmdMode) {
+      exitCommand();
+    } else {
+      setFocused(false);
+      inputRef.current?.blur();
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (addModeOn) {
+      if (e.key === "Escape" || (e.key === "Backspace" && addq === "")) {
+        e.preventDefault();
+        exitAdd();
+      }
+      return;
+    }
     if (cmdMode) {
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
           setActive((i) => (results.length ? (i + 1) % results.length : 0));
-          break;
+          return;
         case "ArrowUp":
           e.preventDefault();
           setActive((i) => (results.length ? (i - 1 + results.length) % results.length : 0));
-          break;
+          return;
         case "Enter":
           e.preventDefault();
           run(results[active]);
-          break;
+          return;
         case "Escape":
           e.preventDefault();
           exitCommand();
-          break;
+          return;
         case "Backspace":
-          // Backspacing past an empty query drops the ">" and returns to filter.
           if (cmd === "") {
             e.preventDefault();
             exitCommand();
           }
-          break;
+          return;
       }
       return;
     }
-    if (e.key === "Escape") {
-      onFilter("");
-      e.currentTarget.blur();
+    // Filter mode.
+    switch (e.key) {
+      case "ArrowDown":
+        if (results.length) {
+          e.preventDefault();
+          setActive((i) => (i + 1) % results.length);
+        }
+        return;
+      case "ArrowUp":
+        if (results.length) {
+          e.preventDefault();
+          setActive((i) => (i - 1 + results.length) % results.length);
+        }
+        return;
+      case "Enter":
+        if (panelOpen && results[active]) {
+          e.preventDefault();
+          run(results[active]);
+        }
+        return;
+      case "Escape":
+        onFilter("");
+        e.currentTarget.blur();
+        return;
     }
   }
 
   // Group results in first-seen order, tagging each with its flat index.
   const groups: { name: string | null; items: { cmd: Command; idx: number }[] }[] = [];
-  results.forEach((cmd, idx) => {
-    const name = cmd.group ?? null;
+  results.forEach((c, idx) => {
+    const name = c.group ?? null;
     let g = groups.find((x) => x.name === name);
     if (!g) {
       g = { name, items: [] };
       groups.push(g);
     }
-    g.items.push({ cmd, idx });
+    g.items.push({ cmd: c, idx });
   });
 
+  const leftIcon = cmdMode ? (
+    <span className="searchbox__chev">›</span>
+  ) : addModeOn ? (
+    <span className="searchbox__chev searchbox__chev--add">
+      <IconPlus size={16} />
+    </span>
+  ) : (
+    <IconSearch size={15} />
+  );
+  const ph = cmdMode ? "Type a command…" : addModeOn ? "Add a title…" : placeholder;
+
   return (
-    <div className={`searchbox ${cmdMode ? "searchbox--cmd" : ""}`} ref={boxRef}>
-      <span className="searchbox__icon">
-        {cmdMode ? <span className="searchbox__chev">›</span> : <IconSearch size={15} />}
-      </span>
+    <div className={`searchbox ${cmdMode ? "searchbox--cmd" : ""} ${addModeOn ? "searchbox--add" : ""}`} ref={boxRef}>
+      <span className="searchbox__icon">{leftIcon}</span>
       <input
         ref={inputRef}
         className="searchbox__input"
         value={value}
         onChange={(e) => change(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={cmdMode ? "Type a command…" : placeholder}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          if (cmdMode) exitCommand();
+          setFocused(false);
+        }}
+        placeholder={ph}
         aria-label="Search library or run a command"
         spellCheck={false}
       />
-      {cmdMode || value ? (
+      {cmdMode || addModeOn || value ? (
         <button className="searchbox__clear" onClick={clear} title="Clear" aria-label="Clear">
           <IconClose size={14} />
         </button>
@@ -188,9 +318,16 @@ export const OmniBox = forwardRef<
         </kbd>
       )}
 
-      {cmdMode && pos && (
-        <>
-          <div className="omni__backdrop" onMouseDown={exitCommand} />
+      {panelOpen &&
+        pos &&
+        (addModeOn ? (
+          <div
+            className="omni__panel omni__panel--add"
+            style={{ top: pos.top, left: pos.left, width: pos.width }}
+          >
+            {renderAdd?.(addq, exitAdd)}
+          </div>
+        ) : (
           <div
             className="omni__panel"
             ref={listRef}
@@ -201,32 +338,33 @@ export const OmniBox = forwardRef<
             {groups.map((g) => (
               <div className="cmdk__group" key={g.name ?? "_"}>
                 {g.name && <div className="cmdk__grouplabel">{g.name}</div>}
-                {g.items.map(({ cmd, idx }) => (
+                {g.items.map(({ cmd: c, idx }) => (
                   <button
-                    key={cmd.id}
+                    key={c.id}
                     data-idx={idx}
                     role="option"
                     aria-selected={idx === active}
-                    className={`cmdk__item ${idx === active ? "is-active" : ""}`}
+                    className={`cmdk__item ${idx === active ? "is-active" : ""} ${
+                      c.active ? "is-current" : ""
+                    }`}
                     onMouseMove={() => setActive(idx)}
-                    // mousedown (not click) so it fires before the input blurs
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      run(cmd);
+                      run(c);
                     }}
                   >
-                    {cmd.icon && <span className="cmdk__itemicon">{cmd.icon}</span>}
-                    <span className="cmdk__title">{cmd.title}</span>
-                    {cmd.subtitle && <span className="cmdk__subtitle">{cmd.subtitle}</span>}
+                    <span className="cmdk__check">{c.active && <IconCheck size={13} />}</span>
+                    {c.icon && <span className="cmdk__itemicon">{c.icon}</span>}
+                    <span className="cmdk__title">{c.title}</span>
+                    {c.subtitle && <span className="cmdk__subtitle">{c.subtitle}</span>}
                     <span className="cmdk__spacer" />
-                    {cmd.hint && <kbd className="cmdk__hint">{cmd.hint}</kbd>}
+                    {c.hint && <kbd className="cmdk__hint">{c.hint}</kbd>}
                   </button>
                 ))}
               </div>
             ))}
           </div>
-        </>
-      )}
+        ))}
     </div>
   );
 });

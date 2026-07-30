@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   chooseLibraryFolder,
@@ -29,7 +29,17 @@ import { getLayout, setLayout, type Layout } from "./lib/layout";
 import { getSort, setSort, sortEntries, SORT_KEYS, SORT_LABEL, type SortKey } from "./lib/sort";
 import { buildTimeline } from "./lib/timeline";
 import { refreshEntry } from "./lib/refresh";
-import { IconGrid, IconPlus, IconSettings, IconTimeline } from "./components/icons";
+import { fuzzyRank } from "./lib/fuzzy";
+import { getRailCollapsed, setRailCollapsed } from "./lib/rail";
+import {
+  IconGrid,
+  IconPlus,
+  IconSettings,
+  IconSidebar,
+  IconTimeline,
+  MEDIUM_ICON,
+} from "./components/icons";
+import type { Command } from "./components/CommandPalette";
 import { Dropdown } from "./components/Dropdown";
 import { OmniBox, type OmniBoxHandle } from "./components/OmniBox";
 import { buildCommands } from "./lib/paletteCommands";
@@ -61,8 +71,8 @@ export default function App() {
   const [sort, setSortState] = useState<SortKey>(getSort());
   const [filterMedium, setFilterMedium] = useState<Medium | null>(null);
   const [query, setQuery] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [railCollapsed, setRailCollapsedState] = useState(getRailCollapsed());
   const [theme, setTheme] = useState<Theme>(getTheme());
   const [accent, setAccent] = useState<string>(getAccent());
   const [enabledMedia, setEnabledMedia] = useState<Medium[]>(getEnabledMedia());
@@ -108,6 +118,14 @@ export default function App() {
     const next = saveMediaOrder(order);
     setMediaOrder(next.order);
     setEnabledMedia(next.enabled);
+  }
+  // Open the Add flow — joined to the pill (add mode), optionally seeded with a
+  // title. All add entry points (＋ button, N, ⌘K ▸ Add, search "Add …") go here.
+  function openAdd(query = "") {
+    omniRef.current?.addMode(query);
+  }
+  function toggleRail() {
+    setRailCollapsedState((v) => setRailCollapsed(!v));
   }
 
   const reload = useCallback(async () => {
@@ -219,6 +237,46 @@ export default function App() {
   const sorted = useMemo(() => sortEntries(filtered, sort), [filtered, sort]);
   const timelineEvents = useMemo(() => buildTimeline(filtered), [filtered]);
 
+  // Plain-text rows for the search dropdown: top matching entries to jump to.
+  // OmniBox appends the "Add …" row itself (it expands the same field into add
+  // mode via `renderAdd`).
+  const filterResults = useCallback(
+    (q: string): Command[] =>
+      fuzzyRank(filtered, q, (e) => e.title)
+        .slice(0, 6)
+        .map((e) => ({
+          id: `jump.${e.id}`,
+          title: e.title,
+          subtitle: e.year ? `${MEDIUM_LABEL[e.medium]} · ${e.year}` : MEDIUM_LABEL[e.medium],
+          group: "Library",
+          icon: MEDIUM_ICON[e.medium]({ size: 15 }),
+          perform: () => setView({ kind: "detail", id: e.id }),
+        })),
+    [filtered],
+  );
+
+  // The Add flow, joined to the pill: rendered into the OmniBox dropdown, its
+  // search driven by the pill's single input (`search`).
+  const renderAdd = useCallback(
+    (q: string, close: () => void): ReactNode => (
+      <AddEntryModal
+        variant="panel"
+        search={q}
+        hasKey={hasKey}
+        hasRawgKey={hasRawg}
+        enabledMedia={enabledMedia}
+        initialMedium={filterMedium}
+        onClose={close}
+        onNeedKey={() => {
+          close();
+          setShowSettings(true);
+        }}
+        onCreated={(e) => upsert(e)}
+      />
+    ),
+    [hasKey, hasRawg, enabledMedia, filterMedium, upsert],
+  );
+
   // --- Global hotkeys -----------------------------------------------------
   // Single-key shortcuts only fire when you're NOT typing in a field (the hook
   // ignores keystrokes without a modifier while an input is focused), so they
@@ -243,7 +301,7 @@ export default function App() {
   // n — new entry. ⌘, — settings (mac convention).
   useHotkey("n", (e) => {
     e.preventDefault();
-    setShowAdd(true);
+    openAdd();
   });
   useHotkey("mod+,", (e) => {
     e.preventDefault();
@@ -261,7 +319,7 @@ export default function App() {
       if (view.kind !== "grid") setView({ kind: "grid" });
       else if (query) setQuery("");
     },
-    !showAdd && !showSettings,
+    !showSettings,
   );
   // 0 = All, 1–9 = the nth enabled medium in the rail.
   useHotkeys(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], (e, spec) => {
@@ -284,8 +342,9 @@ export default function App() {
         theme,
         libraries,
         currentLibraryPath: libraryPath ?? "",
+        currentMedium: filterMedium,
         currentYear: new Date().getFullYear(),
-        onAdd: () => setShowAdd(true),
+        onAdd: () => openAdd(),
         onSettings: () => setShowSettings(true),
         onSelectMedium: selectMedium,
         onChooseLayout: chooseLayout,
@@ -298,7 +357,7 @@ export default function App() {
       }),
     // Handlers close over only stable setters, so state values are the real deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, enabledMedia, layout, sort, theme, libraries, libraryPath],
+    [entries, enabledMedia, layout, sort, theme, libraries, libraryPath, filterMedium],
   );
 
   if (libraryPath === undefined) {
@@ -323,10 +382,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <nav className="rail">
+      <nav className={`rail ${railCollapsed ? "rail--collapsed" : ""}`}>
         <div className="brand">
           <div className="brand__name">
-            MANIFEST<span className="dotmark">.</span>
+            <span className="brand__full">MANIFEST</span>
+            <span className="brand__mark">M</span>
+            <span className="dotmark">.</span>
           </div>
           <div className="brand__spec">マニフェスト</div>
         </div>
@@ -334,22 +395,27 @@ export default function App() {
         <div className="rail__group">
           <div className="rail__legend">Library</div>
           <button
-            className={`railkey ${onLibrary && filterMedium === null ? "railkey--on" : ""}`}
+            className={`railkey railkey--icon ${onLibrary && filterMedium === null ? "railkey--on" : ""}`}
             onClick={() => selectMedium(null)}
             title="Show all (0)"
           >
-            All
+            <IconGrid size={16} />
+            <span className="railkey__label">All</span>
           </button>
-          {enabledMedia.map((m, i) => (
-            <button
-              key={m}
-              className={`railkey ${onLibrary && filterMedium === m ? "railkey--on" : ""}`}
-              onClick={() => selectMedium(m)}
-              title={i < 9 ? `${MEDIUM_LABEL[m]} (${i + 1})` : MEDIUM_LABEL[m]}
-            >
-              {MEDIUM_LABEL[m]}
-            </button>
-          ))}
+          {enabledMedia.map((m, i) => {
+            const Icon = MEDIUM_ICON[m];
+            return (
+              <button
+                key={m}
+                className={`railkey railkey--icon ${onLibrary && filterMedium === m ? "railkey--on" : ""}`}
+                onClick={() => selectMedium(m)}
+                title={i < 9 ? `${MEDIUM_LABEL[m]} (${i + 1})` : MEDIUM_LABEL[m]}
+              >
+                <Icon size={16} />
+                <span className="railkey__label">{MEDIUM_LABEL[m]}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="rail__spacer" />
@@ -362,7 +428,8 @@ export default function App() {
             aria-pressed={onLibrary && layout === "grid"}
             title="Grid view (G)"
           >
-            <IconGrid size={16} /> Grid
+            <IconGrid size={16} />
+            <span className="railkey__label">Grid</span>
           </button>
           <button
             className={`railkey railkey--icon ${onLibrary && layout === "timeline" ? "railkey--on" : ""}`}
@@ -370,8 +437,19 @@ export default function App() {
             aria-pressed={onLibrary && layout === "timeline"}
             title="Timeline view (T)"
           >
-            <IconTimeline size={16} /> Timeline
+            <IconTimeline size={16} />
+            <span className="railkey__label">Timeline</span>
           </button>
+          {/* Sort lives here now (expanded rail only); timeline ignores it. */}
+          <div className="rail-sort">
+            <Dropdown
+              value={sort}
+              options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
+              onChange={(k) => changeSort(k as SortKey)}
+              ariaLabel="Sort"
+              leading="Sort"
+            />
+          </div>
         </div>
 
         <button
@@ -379,43 +457,39 @@ export default function App() {
           onClick={() => setShowSettings(true)}
           title="Settings (⌘,)"
         >
-          <IconSettings size={16} /> Settings
+          <IconSettings size={16} />
+          <span className="railkey__label">Settings</span>
+        </button>
+        <button
+          className="railkey railkey--icon rail__collapse"
+          onClick={toggleRail}
+          title={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-pressed={railCollapsed}
+        >
+          <IconSidebar size={16} />
+          <span className="railkey__label">Collapse</span>
         </button>
       </nav>
 
       <div className="main">
-        <div className="topbar">
-          {/* Left gutter + right actions carry equal flex, so the search box
-              sits dead-centre regardless of how wide the right cluster gets. */}
-          <div className="topbar__gutter" />
-
+        {/* Floating command/search pill, centred over the content. */}
+        <div className="omnibar">
           <OmniBox
             ref={omniRef}
             filter={query}
             onFilter={setQuery}
             commands={commands}
+            filterResults={filterResults}
+            renderAdd={renderAdd}
           />
-
-          <div className="topbar__actions">
-            {/* Always present so switching layout never shifts the row. Timeline
-                is always date-descending, so Sort only bites in the grid — it
-                just governs grid order quietly while you're on the timeline. */}
-            <Dropdown
-              value={sort}
-              options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
-              onChange={(k) => changeSort(k as SortKey)}
-              align="right"
-              ariaLabel="Sort"
-              leading="Sort"
-            />
-            <button
-              className="btn btn--accent btn--lg"
-              onClick={() => setShowAdd(true)}
-              title="Add entry (N)"
-            >
-              <IconPlus size={16} /> Add
-            </button>
-          </div>
+          <button
+            className="omnibar__add"
+            onClick={() => openAdd()}
+            title="Add entry (N)"
+            aria-label="Add entry"
+          >
+            <IconPlus size={18} />
+          </button>
         </div>
 
         <div className="content">
@@ -462,21 +536,6 @@ export default function App() {
         )}
         </div>
       </div>
-
-      {showAdd && (
-        <AddEntryModal
-          hasKey={hasKey}
-          hasRawgKey={hasRawg}
-          enabledMedia={enabledMedia}
-          initialMedium={filterMedium}
-          onClose={() => setShowAdd(false)}
-          onNeedKey={() => {
-            setShowAdd(false);
-            setShowSettings(true);
-          }}
-          onCreated={(e) => upsert(e)}
-        />
-      )}
 
       {showSettings && (
         <SettingsModal
