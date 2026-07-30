@@ -271,6 +271,24 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     `deleteEntry` (a `void` command → always `undefined`), so trashing never navigated away.
     Rewrote `remove()` to treat "didn't throw" as success. Test files are type-checked by the
     prod `tsc` but tree-shaken out of the app bundle.
+  - **Test layout (mirrors Rust):** *unit* tests are co-located next to the code
+    (`src/**/*.test.{ts,tsx}`) — the Vitest/Jest idiom, and it matches the Rust side where unit
+    tests live inline under `#[cfg(test)] mod tests` (currently just `library/store.rs`).
+    *Integration* suites that drive several modules together live in **`tests/integration/`**
+    (import back into `../../src/...`). `vitest.config.ts` `include`s both globs; `tsconfig.json`
+    `include`s `["src", "tests"]` so both are type-checked by the build's `tsc`. Scripts:
+    `npm test` (all), `npm run test:unit` (`vitest run src`), `npm run test:integration`.
+  - **Integration suite** (`tests/integration/`, 9 tests) mounts the **real `<App />`** — real
+    views + real `lib/` + real `src/lib/api` routing — over a stateful in-memory fake of the
+    Tauri backend (`harness.tsx`: `installFakeBackend` implements the command surface over a
+    `Map<id, Entry>`; `renderApp(seed)` installs it + renders). Only the `invoke` disk/network
+    boundary is faked, so flows exercise everything above it. Covers: `library-flow` (boot,
+    pill filter, digit-hotkey medium filter, `t`/`g` layout switch, open entry → status change
+    round-tripped to the store via `patch_entry`), `add-entry` (＋ → add-mode pill → debounced
+    provider search → commit a hit → `create_entry`+`finalize` land it in grid+store; TMDB-key
+    gating), `command-bar` (`>` command mode → run `Timeline view`; fuzzy-jump to an entry via
+    Enter). Note `<Cover>` renders the title as fallback text when a cover URL is missing —
+    seed entries with a `cover` so titles aren't in the DOM twice. Now 133 frontend tests.
 
 - **Command palette (⌘K) added.** A reusable, domain-agnostic system in three layers:
   - `lib/fuzzy.ts` — pure, dependency-free fuzzy matcher (`fuzzyMatch` → score + matched

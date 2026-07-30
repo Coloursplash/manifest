@@ -6,7 +6,14 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "jsdom",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // Unit tests live next to the code they cover (src/**/*.test.*); integration
+    // suites that exercise several modules together live under tests/integration/.
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "tests/integration/**/*.test.ts",
+      "tests/integration/**/*.test.tsx",
+    ],
     setupFiles: ["src/test/setup.ts"],
     globals: true,
     restoreMocks: true,
