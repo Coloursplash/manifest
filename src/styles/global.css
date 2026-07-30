@@ -29,6 +29,7 @@
   --sans: "Helvetica Neue", Helvetica, Inter, Arial, system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --r: 2px;
+  --control-h: 40px; /* shared height for header controls, so the row lines up */
 
   font-family: var(--sans);
   font-size: 16px;
@@ -381,20 +382,26 @@ input[type="date"] {
 .topbar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 18px;
-  row-gap: 12px;
   padding: 14px 22px;
   background: var(--panel);
   border-bottom: 2px solid var(--line-2);
 }
-/* Search + actions cluster: hugs the right edge, and drops to its own line
-   as a unit only when the row can't hold everything. */
+/* Empty left gutter; carries the same flex weight as the right actions so the
+   centred search box stays centred no matter how wide the actions get. */
+.topbar__gutter {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Right-hand controls (Sort, Add). Equal flex weight to the gutter. */
 .topbar__actions {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
-  margin-left: auto;
 }
 
 /* --- left function rail --- */
@@ -714,10 +721,119 @@ body.is-reordering {
 .topbar__spacer {
   flex: 1;
 }
-.topbar__search {
-  width: min(280px, 30vw);
+
+/* Every control in the header shares one height so the row is a clean band. */
+.topbar__actions .btn,
+.topbar__actions .dropdown__btn,
+.searchbox {
+  height: var(--control-h);
+}
+.topbar__actions .btn--lg {
+  padding: 0 18px; /* height is fixed; only horizontal padding matters now */
+  font-size: 0.8rem;
+}
+.topbar__actions .dropdown__btn {
+  padding: 0 12px;
+}
+
+/* Search / filter field — icon, input, and a /-hint or clear button. */
+.searchbox {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(640px, 58vw);
+  padding: 0 12px;
+  background: var(--panel-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+  transition: border-color 0.1s ease;
+}
+.searchbox:focus-within {
+  border-color: var(--accent);
+}
+/* In command mode the field reads as a distinct "command" control. */
+.searchbox--cmd {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.searchbox__chev {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateY(-1px); /* optically centre the glyph */
+}
+.searchbox__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--muted);
+  transition: color 0.1s ease;
+}
+.searchbox:focus-within .searchbox__icon {
+  color: var(--accent);
+}
+.searchbox__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font: inherit;
   font-family: var(--mono);
   font-size: 0.85rem;
+  color: var(--fg);
+}
+.searchbox__input::placeholder {
+  color: var(--faint);
+}
+.searchbox__key {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 1px 6px;
+}
+.searchbox__clear {
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 2px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: color 0.1s ease;
+}
+.searchbox__clear:hover {
+  color: var(--fg);
+}
+
+/* Command-mode dropdown, hung under the search box (position:fixed, measured off
+   the field so it escapes any overflow clipping). Reuses the .cmdk__* row styles. */
+.omni__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+}
+.omni__panel {
+  position: fixed;
+  z-index: 46;
+  max-width: 92vw;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--panel);
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--r);
+  box-shadow: 6px 6px 0 var(--hard);
 }
 
 .content {
@@ -1804,4 +1920,182 @@ body.is-reordering {
   color: var(--muted);
   min-height: 0.9rem; /* reserve the line so unlabelled columns align */
   line-height: 0.9rem;
+}
+
+/* --- command palette (⌘K) --------------------------------------------------
+   A generic overlay: hairline panel, one accent, mono affordances. Sits above
+   modals and dropdowns. See components/CommandPalette.tsx. */
+.cmdk__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: start center;
+  padding: 12vh 16px 16px;
+  z-index: 60;
+}
+.cmdk {
+  width: min(640px, 100%);
+  max-height: 68vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 2px solid var(--line-2);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--r);
+  box-shadow: 10px 10px 0 var(--hard);
+  overflow: hidden;
+}
+.cmdk__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-bottom: 2px solid var(--line);
+}
+.cmdk__icon {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  flex: none;
+}
+.cmdk__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.98rem;
+}
+.cmdk__input::placeholder {
+  color: var(--faint);
+}
+.cmdk__esc {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 2px 6px;
+  flex: none;
+}
+.cmdk__crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--r);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.cmdk__crumb-x {
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.cmdk__list {
+  overflow-y: auto;
+  padding: 6px;
+}
+.cmdk__group {
+  padding: 2px 0;
+}
+.cmdk__grouplabel {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--faint);
+  padding: 9px 10px 5px;
+}
+.cmdk__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  border-radius: var(--r);
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.cmdk__item.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.cmdk__item.is-disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cmdk__itemicon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--muted);
+}
+.cmdk__item.is-active .cmdk__itemicon {
+  color: var(--accent-ink);
+}
+.cmdk__title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+  max-width: 60%;
+}
+.cmdk__subtitle {
+  color: var(--muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdk__item.is-active .cmdk__subtitle {
+  color: var(--accent-ink);
+  opacity: 0.75;
+}
+.cmdk__spacer {
+  flex: 1;
+}
+.cmdk__chev {
+  color: var(--muted);
+  font-size: 1rem;
+  flex: none;
+}
+.cmdk__item.is-active .cmdk__chev {
+  color: var(--accent-ink);
+}
+.cmdk__hint {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 1px 5px;
+  flex: none;
+}
+.cmdk__item.is-active .cmdk__hint {
+  color: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+.cmdk__empty {
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
 }

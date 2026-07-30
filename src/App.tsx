@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   chooseLibraryFolder,
@@ -31,6 +31,9 @@ import { buildTimeline } from "./lib/timeline";
 import { refreshEntry } from "./lib/refresh";
 import { IconGrid, IconPlus, IconSettings, IconTimeline } from "./components/icons";
 import { Dropdown } from "./components/Dropdown";
+import { OmniBox, type OmniBoxHandle } from "./components/OmniBox";
+import { buildCommands } from "./lib/paletteCommands";
+import { useHotkey, useHotkeys } from "./lib/useHotkey";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
 import { Timeline } from "./views/Timeline";
@@ -64,6 +67,7 @@ export default function App() {
   const [accent, setAccent] = useState<string>(getAccent());
   const [enabledMedia, setEnabledMedia] = useState<Medium[]>(getEnabledMedia());
   const [mediaOrder, setMediaOrder] = useState<Medium[]>(getMediaOrder());
+  const omniRef = useRef<OmniBoxHandle>(null);
 
   function changeTheme(t: Theme) {
     applyTheme(t);
@@ -215,6 +219,88 @@ export default function App() {
   const sorted = useMemo(() => sortEntries(filtered, sort), [filtered, sort]);
   const timelineEvents = useMemo(() => buildTimeline(filtered), [filtered]);
 
+  // --- Global hotkeys -----------------------------------------------------
+  // Single-key shortcuts only fire when you're NOT typing in a field (the hook
+  // ignores keystrokes without a modifier while an input is focused), so they
+  // never clash with the search box. Every handler preventDefaults so the key
+  // can't leak into a field that opens focused (e.g. the Add modal). ⌘-combos
+  // work everywhere.
+
+  // ⌘K — focus the search box in ">" command mode.
+  useHotkey("mod+k", (e) => {
+    e.preventDefault();
+    omniRef.current?.commandMode();
+  });
+  // g / t — jump between grid and timeline layouts.
+  useHotkey("g", (e) => {
+    e.preventDefault();
+    chooseLayout("grid");
+  });
+  useHotkey("t", (e) => {
+    e.preventDefault();
+    chooseLayout("timeline");
+  });
+  // n — new entry. ⌘, — settings (mac convention).
+  useHotkey("n", (e) => {
+    e.preventDefault();
+    setShowAdd(true);
+  });
+  useHotkey("mod+,", (e) => {
+    e.preventDefault();
+    setShowSettings(true);
+  });
+  // / — focus the search box.
+  useHotkey("/", (e) => {
+    e.preventDefault();
+    omniRef.current?.focus();
+  });
+  // Escape — step back out of a detail/review page, else clear the filter.
+  useHotkey(
+    "escape",
+    () => {
+      if (view.kind !== "grid") setView({ kind: "grid" });
+      else if (query) setQuery("");
+    },
+    !showAdd && !showSettings,
+  );
+  // 0 = All, 1–9 = the nth enabled medium in the rail.
+  useHotkeys(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], (e, spec) => {
+    e.preventDefault();
+    if (spec === "0") {
+      selectMedium(null);
+      return;
+    }
+    const m = enabledMedia[Number(spec) - 1];
+    if (m) selectMedium(m);
+  });
+
+  const commands = useMemo(
+    () =>
+      buildCommands({
+        entries,
+        enabledMedia,
+        layout,
+        sort,
+        theme,
+        libraries,
+        currentLibraryPath: libraryPath ?? "",
+        currentYear: new Date().getFullYear(),
+        onAdd: () => setShowAdd(true),
+        onSettings: () => setShowSettings(true),
+        onSelectMedium: selectMedium,
+        onChooseLayout: chooseLayout,
+        onChangeSort: changeSort,
+        onChangeTheme: changeTheme,
+        onOpenEntry: (id) => setView({ kind: "detail", id }),
+        onOpenReview: (year) => setView({ kind: "review", year }),
+        onSwitchLibrary: switchToLibrary,
+        onBrowseLibrary: browseForLibrary,
+      }),
+    // Handlers close over only stable setters, so state values are the real deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, enabledMedia, layout, sort, theme, libraries, libraryPath],
+  );
+
   if (libraryPath === undefined) {
     return <div className="center spinner">loading…</div>;
   }
@@ -250,14 +336,16 @@ export default function App() {
           <button
             className={`railkey ${onLibrary && filterMedium === null ? "railkey--on" : ""}`}
             onClick={() => selectMedium(null)}
+            title="Show all (0)"
           >
             All
           </button>
-          {enabledMedia.map((m) => (
+          {enabledMedia.map((m, i) => (
             <button
               key={m}
               className={`railkey ${onLibrary && filterMedium === m ? "railkey--on" : ""}`}
               onClick={() => selectMedium(m)}
+              title={i < 9 ? `${MEDIUM_LABEL[m]} (${i + 1})` : MEDIUM_LABEL[m]}
             >
               {MEDIUM_LABEL[m]}
             </button>
@@ -272,6 +360,7 @@ export default function App() {
             className={`railkey railkey--icon ${onLibrary && layout === "grid" ? "railkey--on" : ""}`}
             onClick={() => chooseLayout("grid")}
             aria-pressed={onLibrary && layout === "grid"}
+            title="Grid view (G)"
           >
             <IconGrid size={16} /> Grid
           </button>
@@ -279,6 +368,7 @@ export default function App() {
             className={`railkey railkey--icon ${onLibrary && layout === "timeline" ? "railkey--on" : ""}`}
             onClick={() => chooseLayout("timeline")}
             aria-pressed={onLibrary && layout === "timeline"}
+            title="Timeline view (T)"
           >
             <IconTimeline size={16} /> Timeline
           </button>
@@ -287,6 +377,7 @@ export default function App() {
         <button
           className="railkey railkey--icon rail__settings"
           onClick={() => setShowSettings(true)}
+          title="Settings (⌘,)"
         >
           <IconSettings size={16} /> Settings
         </button>
@@ -294,27 +385,33 @@ export default function App() {
 
       <div className="main">
         <div className="topbar">
-          <input
-            className="input topbar__search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter library…"
+          {/* Left gutter + right actions carry equal flex, so the search box
+              sits dead-centre regardless of how wide the right cluster gets. */}
+          <div className="topbar__gutter" />
+
+          <OmniBox
+            ref={omniRef}
+            filter={query}
+            onFilter={setQuery}
+            commands={commands}
           />
+
           <div className="topbar__actions">
-            {/* Sort is grid-specific — the timeline is always date-descending. */}
-            {onLibrary && layout === "grid" && (
-              <Dropdown
-                value={sort}
-                options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
-                onChange={(k) => changeSort(k as SortKey)}
-                align="right"
-                ariaLabel="Sort"
-                leading="Sort"
-              />
-            )}
+            {/* Always present so switching layout never shifts the row. Timeline
+                is always date-descending, so Sort only bites in the grid — it
+                just governs grid order quietly while you're on the timeline. */}
+            <Dropdown
+              value={sort}
+              options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
+              onChange={(k) => changeSort(k as SortKey)}
+              align="right"
+              ariaLabel="Sort"
+              leading="Sort"
+            />
             <button
               className="btn btn--accent btn--lg"
               onClick={() => setShowAdd(true)}
+              title="Add entry (N)"
             >
               <IconPlus size={16} /> Add
             </button>

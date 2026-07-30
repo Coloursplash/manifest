@@ -272,6 +272,55 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     Rewrote `remove()` to treat "didn't throw" as success. Test files are type-checked by the
     prod `tsc` but tree-shaken out of the app bundle.
 
+- **Command palette (⌘K) added.** A reusable, domain-agnostic system in three layers:
+  - `lib/fuzzy.ts` — pure, dependency-free fuzzy matcher (`fuzzyMatch` → score + matched
+    indices, with prefix/word-start/camelHump/consecutive bonuses; `fuzzyRank` filters + ranks,
+    stable for ties). No DOM — reusable for any "type to filter" list.
+  - `components/CommandPalette.tsx` — the generic overlay + `Command` type. Feed it a flat
+    `Command[]`; it handles search, fuzzy ranking, first-seen-order **grouping**, keyboard nav
+    (↑/↓ wrap, Enter, Esc), and **drill-in submenus** via `Command.children()` (a stack with a
+    breadcrumb; Esc/Backspace pop). Commands are either terminal (`perform`, closes unless
+    `keepOpen`) or drill-in (`children`). Knows nothing about manifest.
+  - `lib/useHotkey.ts` — reusable global shortcut hook. Combo strings like `"mod+k"` (mod = ⌘
+    on mac / Ctrl elsewhere); ignores keystrokes while typing in inputs *unless* the combo has
+    a modifier (so ⌘K still fires from the filter box).
+  - App wiring: `lib/paletteCommands.ts` (`buildCommands(ctx)`) is the only app-aware piece —
+    turns app state + handlers into the command list (Actions: add / settings / year-in-review /
+    Switch library… drill-in; View: grid / timeline / Sort by… drill-in / theme toggle; Filter:
+    All + each enabled medium; Entries: jump to any entry). `App` binds `"mod+k"` to toggle
+    `showPalette`, memoizes `commands` (handlers close over stable setters only, so state values
+    are the real deps), renders `<CommandPalette>`, and adds a `.cmdk-trigger` (⌘K) button in the
+    topbar. Styles under `.cmdk*` in `global.css` (scrim `z-index:60`, above modals/dropdowns;
+    active row = full accent fill). Tests: `lib/fuzzy.test.ts` + `components/CommandPalette.test.tsx`
+    (open/group/filter/perform/Enter/drill-in+pop/Esc-closes/empty). Now 109 frontend tests.
+  - **Global hotkeys (no palette needed) + header polish.** `lib/useHotkey.ts` gains
+    `useHotkeys(specs[], handler)` — binds a family of combos in one listener (used for the
+    digit keys, where a per-key hook loop would break rules-of-hooks). Bindings in `App`:
+    `⌘K` command mode, `g`/`t` layout, `n` new entry, `⌘,` settings, `/` focus search, `Esc`
+    back-out-of-page / clear filter, `0` = All + `1`–`9` = nth enabled medium. Single-key combos
+    self-disable while typing (the hook ignores non-modifier keys in inputs); **every handler
+    `preventDefault()`s** so the key can't leak into a field that opens autofocused (the `n`→Add
+    bug). Rail + Add carry `title` tooltips showing their key. All header controls share
+    `--control-h` (40px) so the row lines up; `.topbar__actions` wraps as a unit on narrow widths.
+  - **Search box IS the command bar (VSCode-style `>`), centred.** Replaced the separate `⌘K`
+    button + modal palette with `components/OmniBox.tsx` (`forwardRef`, `OmniBoxHandle` =
+    `focus()` / `commandMode()`): one **centred** header field where plain text drives the
+    library `filter`, and a leading `>` flips it into command mode — fuzzy-searching
+    `buildCommands` in a `position:fixed` dropdown (measured off the field to escape clipping;
+    reuses the `.cmdk__*` row styles, shows each command's hotkey via `.cmdk__hint`). Command
+    mode is **explicit state** (`mode`/`cmd`), and the `>` is represented by the ›-icon on the
+    left — the character is *not* kept in the text, so it never doubles up; Backspace on an empty
+    query drops back to filter. `⌘K`/`commandMode()` enters it; Enter/↑/↓ drive the list; Esc
+    exits and restores the live filter. Topbar is a 3-part flex (`topbar__gutter` |
+    OmniBox | `topbar__actions`) with equal side weights so the box stays dead-centre; width
+    `min(640px, 58vw)`. `lib/paletteCommands.ts` is **flat** (no `children` drill-in — Sort and
+    Switch-library expanded to one command each, each with a `hint`), the right shape for inline
+    fuzzy jump. The modal `CommandPalette.tsx` stays in the tree (still reusable + tested) but
+    `App` no longer renders it. Sort dropdown is now **always** rendered (was gated on grid
+    layout, which shifted the row on every view switch) — timeline ignores it. Tests:
+    `OmniBox.test.tsx` (filter vs `>` command mode, un-doubled `>`, fuzzy, click/Enter run, Esc
+    restore, ref `commandMode`). 117 frontend tests.
+
 Known: user has reported bugs in the new views to be triaged. Idea on the table: a "wishlist"
 concept distinct from backlog, gated on adding an `owned` tag for games/books (they're not
 subscription media) — not built yet.
