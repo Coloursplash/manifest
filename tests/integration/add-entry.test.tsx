@@ -86,6 +86,127 @@ describe("add-entry flow", () => {
     expect(backend.callsTo("append_note")).toHaveLength(0);
   });
 
+  // The keyboard model: type the title, ⏎ locks it in and hands focus to the
+  // grid, the arrows walk the grid, ⏎ on a hit logs it.
+  describe("keyboard", () => {
+    const THREE: Candidate[] = [
+      { title: "Arrival", year: 2016, cover: "a.jpg" },
+      { title: "Sicario", year: 2015, cover: "b.jpg" },
+      { title: "Dune", year: 2021, cover: "c.jpg" },
+    ];
+    const card = (title: string) =>
+      screen.getByText(title, { selector: ".scard__title" }).closest(".scard")!;
+
+    /** N → type → wait for hits. */
+    async function search(user: ReturnType<typeof userEvent.setup>) {
+      await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+      await user.keyboard("n");
+      expect(screen.getByRole("textbox", { name: /search library/i })).toHaveFocus();
+      await user.keyboard("arrival");
+      await screen.findByText("Arrival (2016)", {}, { timeout: 2000 });
+    }
+
+    it("⏎ locks the title in and focuses the first hit; arrows move along the row", async () => {
+      const user = userEvent.setup();
+      renderApp({ hasTmdbKey: true, candidates: THREE });
+      await search(user);
+
+      await user.keyboard("{Enter}");
+      expect(card("Arrival (2016)")).toHaveFocus();
+
+      await user.keyboard("{ArrowRight}");
+      expect(card("Sicario (2015)")).toHaveFocus();
+      await user.keyboard("{ArrowRight}");
+      expect(card("Dune (2021)")).toHaveFocus();
+      // Clamped at the end rather than wrapping round.
+      await user.keyboard("{ArrowRight}");
+      expect(card("Dune (2021)")).toHaveFocus();
+
+      await user.keyboard("{ArrowLeft}");
+      expect(card("Sicario (2015)")).toHaveFocus();
+    });
+
+    it("Esc from the grid puts the caret back in the title, add mode still open", async () => {
+      const user = userEvent.setup();
+      renderApp({ hasTmdbKey: true, candidates: THREE });
+      await search(user);
+
+      await user.keyboard("{Enter}");
+      await user.keyboard("{Escape}");
+      expect(screen.getByRole("textbox", { name: /search library/i })).toHaveFocus();
+      // Still adding — the hits are on screen and the title survived.
+      expect(screen.getByText("Arrival (2016)")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: /search library/i })).toHaveValue("arrival");
+    });
+
+    it("⇥ steps through the categories and re-runs the search there", async () => {
+      const user = userEvent.setup();
+      const { backend } = renderApp({ hasTmdbKey: true, candidates: THREE });
+      await search(user);
+
+      // Films is first; ⇥ moves to the next enabled medium and searches it.
+      await user.keyboard("{Tab}");
+      await waitFor(() => {
+        const searches = backend.callsTo("search_metadata");
+        expect(searches[searches.length - 1].medium).toBe("tv");
+      });
+      // The strip tracks it (the rail has a "TV" button too, so scope to the
+      // panel's category tabs), and focus never left the title field.
+      expect(document.querySelector(".tab--on")).toHaveTextContent("TV");
+      expect(screen.getByRole("textbox", { name: /search library/i })).toHaveFocus();
+    });
+
+    it("⇥ from the grid keeps you on the grid once the new hits land", async () => {
+      const user = userEvent.setup();
+      renderApp({ hasTmdbKey: true, candidates: THREE });
+      await search(user);
+
+      await user.keyboard("{Enter}{ArrowRight}");
+      expect(card("Sicario (2015)")).toHaveFocus();
+
+      // The old hits belong to Films, so they're dropped on the way out — focus
+      // catches the new category's first hit rather than falling to <body>.
+      await user.keyboard("{Tab}");
+      await waitFor(() => expect(card("Arrival (2016)")).toHaveFocus(), { timeout: 2000 });
+    });
+
+    it("⏎ on a hit opens the log dialog, and ⌘⏎ commits it", async () => {
+      const user = userEvent.setup();
+      const { backend } = renderApp({ hasTmdbKey: true, candidates: THREE });
+      await search(user);
+
+      await user.keyboard("{Enter}{ArrowRight}{Enter}");
+      expect(await screen.findByText(/Log a watch/)).toBeInTheDocument();
+      expect(screen.getByText("Sicario (2015)")).toBeInTheDocument();
+      // Nothing is written until you commit.
+      expect(backend.callsTo("create_entry")).toHaveLength(0);
+
+      // Focus follows in, so you can just write.
+      expect(screen.getByPlaceholderText(/Thoughts/)).toHaveFocus();
+      await user.keyboard("Tense.");
+      await user.keyboard("{Meta>}{Enter}{/Meta}");
+
+      await waitFor(() => expect(backend.entries.has("film/sicario")).toBe(true));
+      const made = backend.entries.get("film/sicario")!;
+      expect(made.status).toBe("done");
+      expect(made.notes).toContain("Tense.");
+    });
+
+    it("⇧⏎ files a Plan without a dialog and leaves you on the grid", async () => {
+      const user = userEvent.setup();
+      const { backend } = renderApp({ hasTmdbKey: true, candidates: THREE });
+      await search(user);
+
+      await user.keyboard("{Enter}");
+      await user.keyboard("{Shift>}{Enter}{/Shift}");
+
+      await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
+      expect(backend.entries.get("film/arrival")!.status).toBe("want");
+      expect(screen.queryByText(/Log a watch/)).not.toBeInTheDocument();
+      expect(backend.callsTo("append_note")).toHaveLength(0);
+    });
+  });
+
   it("gates the film provider behind a TMDB key and offers a manual add", async () => {
     const user = userEvent.setup();
     const { backend } = renderApp({ hasTmdbKey: false, candidates: CANDIDATES });

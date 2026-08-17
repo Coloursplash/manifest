@@ -25,6 +25,30 @@ Every feature must respect this:
 - A destructive write (delete/overwrite an entry) is a big deal — confirm in-UI and prefer
   moving to a trash folder over hard delete.
 
+## The second directive: the seven media are not interchangeable
+
+**Film is the exception, not the template.** It is the easiest medium — one sitting, one
+date, one opinion — and designing against it produces flows that are quietly broken
+everywhere else. This is the mistake that keeps recurring here, so treat it as a rule:
+
+- **You consume most media over time, not at a point.** A season of TV is a run of episodes
+  across weeks. A book is a month of evenings. A game is sixty hours. Only **film** and
+  **music** (an album you queue up) are genuinely single-sitting — `PROGRESS[medium].single`
+  already says exactly this, in `src/lib/types.ts`.
+- So **never make "when?" a single date field for a serial medium.** "I watched Severance"
+  isn't a date; it's a period, and/or a set of dated blocks as you go. A UI that forces one
+  date makes the user invent data — the same class of bug as the auto-stamped `finished`
+  date that got removed.
+- Changing the *wording* per medium is not the same as changing the *shape*. `VERBS` swaps
+  "watch"/"read"/"play"; that is cosmetic. `PROGRESS` describes the actual shape (single vs
+  serial, unit, total, season). If a feature needs a per-medium difference, it belongs in
+  those tables — not in an `if (medium === "film")` at the call site, and not left implicit.
+
+**The check, before shipping anything user-facing:** walk the feature through all seven
+media — film, tv, anime, book, manga, game, music — and say in one line what it means for
+each. If an answer is "same as film", justify it. If you can't, the design isn't finished:
+say so and ask, rather than shipping the film-shaped version for everything.
+
 ## Stack
 
 - **Shell:** Tauri 2 (Rust core + webview frontend). Chosen for tiny bundle, strong local
@@ -146,6 +170,8 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
 - This is not a git repo yet and has no build tooling. **Before writing code, confirm with
   the user** whether to scaffold the Tauri project (it pulls a large dependency tree) —
   don't `cargo`/`npm init` unprompted.
+- **Run the seven-media check** (see the second directive) on every user-facing change before
+  writing it. Don't generalise from film.
 - When unsure about a product decision, check `GOAL.md` first; if still unclear, ask.
 - Update `GOAL.md` / `CLAUDE.md` when a decision changes — treat docs as part of the change.
 - Never add telemetry, analytics, accounts, or a hosted backend. If a task seems to need
@@ -418,11 +444,68 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   `NoteDraft` instead of three positional args. `AddEntryModal` gained a `create()` helper
   (fetch details → `createEntry`) shared by the instant path and the dialog, so `addManual`
   routes through the same code. Styles: `.logdialog*`. 154 frontend tests.
+  - **Known wrong — it is film-shaped.** `NoteEditor` offers exactly one `date`, and the log
+    dialog opens for every medium's `done` status. That fits film and music and nothing else:
+    you can't say "watched S1 over March", or record a book you read across six weeks, without
+    inventing a date. Serial media (tv, anime, book, manga, game) need a period and/or
+    progress-as-you-go, not a point. **Don't build more on top of this shape** — see the
+    second directive; the fix is the open date-logging rework below.
+
+- **Keyboard-only add-and-log.** The add flow stopped at the pill: you could type a search
+  but needed the mouse to pick a hit, so `n` → search → log broke halfway. The model is
+  **type the title → ⏎ locks it in and hands focus to the results grid → arrows walk the
+  grid as it looks → ⏎ on a hit logs it**. Focus genuinely moves: each `.scard` is
+  `tabIndex={-1}` + `data-card` and owns its keys, so nav is real DOM focus, not a shadow
+  cursor.
+  - **2D arrows.** ←/→ step linearly (so they flow across row ends, Finder-style); ↑/↓ move by
+    a whole row, where the row width is `columnsOf()` — read off the laid-out DOM, since the
+    grid is `auto-fill` and the column count is whatever the width allows. ← from the first
+    hit and ↑ off the top row return to the title field, as do Esc and Backspace.
+  - **⇥ / ⇧⇥ cycle the category** from the field or the grid, instead of moving focus. The
+    panel therefore *always* shows the category strip (it used to hide when the rail had a
+    medium filter) — ⇥ has to be visible to be usable; its tabs are `tabIndex={-1}` with a ⇥
+    marker. `switchMedium` now **clears the results** on the way out (a fast ⏎ after ⇥ would
+    otherwise file a film as a TV show) and, in panel mode, leaves the re-search to the
+    debounced effect rather than firing a second provider call. A `catchFocus` ref carries
+    "you were on the grid" across the async gap and re-focuses the new first hit once the
+    search settles.
+  - On a hit: ⏎ log (opens the dialog), ⇧⏎ Plan, ⌥⏎ in-progress, ⌘⏎ details preview (itself
+    focusable, Esc/⏎ handled). A `.keyhints` legend row spells all of it out. With no matches,
+    ⏎ from the field files the typed title by hand.
+  - **Plumbing.** The field keeps focus until ⏎, so `OmniBox` gained `onAddKey(e) => boolean`
+    (offers each keystroke to the panel first — it claims only ⏎/↓/⇥) and `onModeChange`;
+    `AddEntryModal` publishes its handler via `keyHandlerRef` and gets focus back through
+    `onRefocusSearch`. `App` owns both refs, and **stands its single-key hotkeys down while
+    the pill isn't in filter mode** (`idle`) — focus on a card is not a text field, so `g`/`t`/
+    `n`/digits would otherwise fire under the open panel.
+  - `NoteEditor` gained ⌘/Ctrl+⏎ to commit from any field, Esc to cancel (stopPropagation, so
+    the app-wide Escape doesn't also fire), an `autoFocus` that puts the caret in the note
+    when the log dialog opens, and a `⌘⏎` legend on the submit (`.btn__key`, `aria-hidden` so
+    accessible names don't shift).
+  - `RatingCircles` was mouse-only: a key press reports no coordinates, so `valueAt` read
+    every one as a left-half hit and scored odd. Keyboard activation (`e.detail === 0`) now
+    takes the whole value; ←/→ nudge a half point, Backspace clears.
+  - `.omni__panel--add` restores `user-select: text` — the command list turns it off, and
+    WebKit honours that on form controls, which would make the log dialog's textarea
+    unselectable in the Tauri webview.
+  - Tests: `AddEntryModal.test.tsx` pins `columnsOf` directly (jsdom has no layout, so the
+    ↑/↓ arithmetic can't be driven through the rendered app), `Rating.test.tsx` covers the
+    keyboard scoring, and six keyboard passes through the real `<App />` in
+    `tests/integration/add-entry.test.tsx` cover ⏎-to-grid, ←/→ + clamping, Esc back to the
+    field, ⇥ from field and from grid, the log dialog + ⌘⏎ commit, and ⇧⏎ Plan. 167 frontend
+    tests.
 
 Known: user has reported bugs in the new views to be triaged.
 
-v1 core loop complete. Next: import from other trackers, custom media types, more frontend
-tests (component/view level).
+**Open, and the top priority: date logging for serial media.** How you record when you
+watched/read/played something only works for film and music. TV, anime, books, manga and
+games are consumed over a stretch of time, and the app currently offers a single date in the
+log editor plus the bare `started`/`finished` pair — clunky at best, wrong at worst. This
+needs a product decision before code (a period? per-episode dated blocks? progress entries
+that carry their own date?) — **ask the user, don't guess and don't reuse the film flow.**
+
+v1 core loop complete. Next: the date-logging rework above, then import from other trackers,
+custom media types, more frontend tests (component/view level).
 
 - **Backend integration suite added.** `src-tauri/tests/` (Cargo's convention — each file is a
   separate crate linking `manifest_lib`, so it exercises only the public surface). `lib.rs`'s

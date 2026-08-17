@@ -45,10 +45,27 @@ export const OmniBox = forwardRef<
     filterResults?: (q: string) => Command[];
     /** The add UI, rendered into the dropdown when in add mode. */
     renderAdd?: (query: string, close: () => void) => ReactNode;
+    /** Add mode: the field holds focus until you commit the title, so keys the
+     *  add panel wants (⏎ to hand over to the results, ⇥ to change category)
+     *  are offered here first. Return true to say "consumed"; anything else
+     *  falls through to typing and the pill's own Esc/Backspace. */
+    onAddKey?: (e: React.KeyboardEvent<HTMLInputElement>) => boolean;
+    /** Report which mode the pill is in, so the app can stand down its
+     *  single-key hotkeys while you're adding. */
+    onModeChange?: (mode: "filter" | "command" | "add") => void;
     placeholder?: string;
   }
 >(function OmniBox(
-  { filter, onFilter, commands, filterResults, renderAdd, placeholder = "Search, or > for commands" },
+  {
+    filter,
+    onFilter,
+    commands,
+    filterResults,
+    renderAdd,
+    onAddKey,
+    onModeChange,
+    placeholder = "Search, or > for commands",
+  },
   ref,
 ) {
   const [mode, setMode] = useState<"filter" | "command" | "add">("filter");
@@ -98,6 +115,8 @@ export const OmniBox = forwardRef<
   }, [cmdMode, addModeOn, cmd, commands, filter, filterResults, renderAdd]);
 
   const panelOpen = addModeOn ? true : focused && (cmdMode || results.length > 0);
+
+  useEffect(() => onModeChange?.(mode), [mode, onModeChange]);
 
   useEffect(() => {
     setActive((i) => Math.min(Math.max(i, 0), Math.max(results.length - 1, 0)));
@@ -207,6 +226,7 @@ export const OmniBox = forwardRef<
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (addModeOn) {
+      if (onAddKey?.(e)) return;
       if (e.key === "Escape" || (e.key === "Backspace" && addq === "")) {
         e.preventDefault();
         exitAdd();

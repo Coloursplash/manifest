@@ -49,7 +49,7 @@ import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
 import { Timeline } from "./views/Timeline";
 import { EntryDetail } from "./views/EntryDetail";
-import { AddEntryModal } from "./views/AddEntryModal";
+import { AddEntryModal, type AddKeyHandler } from "./views/AddEntryModal";
 import { SettingsModal } from "./views/SettingsModal";
 import { Review } from "./views/Review";
 
@@ -80,6 +80,14 @@ export default function App() {
   const [mediaOrder, setMediaOrder] = useState<Medium[]>(getMediaOrder());
   const [ownedMedia, setOwnedMedia] = useState<Medium[]>(getOwnedMedia());
   const omniRef = useRef<OmniBoxHandle>(null);
+  // Which mode the pill is in. While it's adding, focus can sit on a result
+  // card — not a text field — so the single-key hotkeys have to stand down or
+  // they'd fire under the panel.
+  const [omniMode, setOmniMode] = useState<"filter" | "command" | "add">("filter");
+  // The add panel publishes here the handler for keys the pill forwards while
+  // the title field still has focus (⏎ to hand over to the grid, ⇥ category).
+  const addKeyRef = useRef<AddKeyHandler | null>(null);
+  const idle = omniMode === "filter";
 
   function changeTheme(t: Theme) {
     applyTheme(t);
@@ -272,6 +280,8 @@ export default function App() {
         hasRawgKey={hasRawg}
         enabledMedia={enabledMedia}
         initialMedium={filterMedium}
+        keyHandlerRef={addKeyRef}
+        onRefocusSearch={() => omniRef.current?.focus()}
         onClose={close}
         onNeedKey={() => {
           close();
@@ -296,28 +306,44 @@ export default function App() {
     omniRef.current?.commandMode();
   });
   // g / t — jump between grid and timeline layouts.
-  useHotkey("g", (e) => {
-    e.preventDefault();
-    chooseLayout("grid");
-  });
-  useHotkey("t", (e) => {
-    e.preventDefault();
-    chooseLayout("timeline");
-  });
+  useHotkey(
+    "g",
+    (e) => {
+      e.preventDefault();
+      chooseLayout("grid");
+    },
+    idle,
+  );
+  useHotkey(
+    "t",
+    (e) => {
+      e.preventDefault();
+      chooseLayout("timeline");
+    },
+    idle,
+  );
   // n — new entry. ⌘, — settings (mac convention).
-  useHotkey("n", (e) => {
-    e.preventDefault();
-    openAdd();
-  });
+  useHotkey(
+    "n",
+    (e) => {
+      e.preventDefault();
+      openAdd();
+    },
+    idle,
+  );
   useHotkey("mod+,", (e) => {
     e.preventDefault();
     setShowSettings(true);
   });
   // / — focus the search box.
-  useHotkey("/", (e) => {
-    e.preventDefault();
-    omniRef.current?.focus();
-  });
+  useHotkey(
+    "/",
+    (e) => {
+      e.preventDefault();
+      omniRef.current?.focus();
+    },
+    idle,
+  );
   // Escape — step back out of a detail/review page, else clear the filter.
   useHotkey(
     "escape",
@@ -325,18 +351,22 @@ export default function App() {
       if (view.kind !== "grid") setView({ kind: "grid" });
       else if (query) setQuery("");
     },
-    !showSettings,
+    !showSettings && idle,
   );
   // 0 = All, 1–9 = the nth enabled medium in the rail.
-  useHotkeys(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], (e, spec) => {
-    e.preventDefault();
-    if (spec === "0") {
-      selectMedium(null);
-      return;
-    }
-    const m = enabledMedia[Number(spec) - 1];
-    if (m) selectMedium(m);
-  });
+  useHotkeys(
+    ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    (e, spec) => {
+      e.preventDefault();
+      if (spec === "0") {
+        selectMedium(null);
+        return;
+      }
+      const m = enabledMedia[Number(spec) - 1];
+      if (m) selectMedium(m);
+    },
+    idle,
+  );
 
   const commands = useMemo(
     () =>
@@ -487,6 +517,8 @@ export default function App() {
             commands={commands}
             filterResults={filterResults}
             renderAdd={renderAdd}
+            onAddKey={(e) => addKeyRef.current?.(e) ?? false}
+            onModeChange={setOmniMode}
           />
           <button
             className="omnibar__add"

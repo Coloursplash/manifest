@@ -77,6 +77,54 @@ body {
   overflow: hidden;
 }
 
+/* --- key legends --- */
+kbd {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* A row of "⏎ Move" legends under a keyboard-driven list. */
+.keyhints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.keyhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.keyhint kbd {
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  padding: 2px 6px;
+}
+/* Shortcut printed inside a button, e.g. ⌘⏎ on a submit. */
+.btn__key {
+  opacity: 0.6;
+  border: 1px solid currentColor;
+  border-radius: var(--r);
+  padding: 0 4px;
+}
+/* ⇥ marker on the add panel's category strip. */
+.tabs__key {
+  align-self: center;
+  margin-left: 2px;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 2px 6px;
+}
+
 /* --- type helpers --- */
 .label {
   text-transform: uppercase;
@@ -892,6 +940,10 @@ body.is-reordering {
   max-height: 74vh;
   padding: 0;
   border-top: 3px solid var(--accent);
+  /* The command list suppresses selection so arrowing doesn't highlight rows;
+     the add panel holds real prose and a note editor, and WebKit honours
+     user-select on form controls, so it has to come back on here. */
+  user-select: text;
 }
 .addpanel {
   padding: 16px;
@@ -1578,6 +1630,24 @@ body.is-reordering {
 .scard__overlay:hover {
   opacity: 1;
 }
+/* The keyboard cursor over the results. Cards are focused programmatically —
+   ⏎ from the title field steps in, then the arrows move — so this is a plain
+   :focus, and it shows the same actions hovering does. */
+.scard {
+  outline: none;
+}
+.scard:focus .cover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.scard:focus .scard__overlay,
+.scard:focus-within .scard__overlay {
+  opacity: 1;
+}
+.preview:focus {
+  outline: none;
+}
+
 /* Clicking the cover art (not a button) opens the info preview. */
 .scard__cover {
   cursor: pointer;
