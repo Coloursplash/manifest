@@ -99,10 +99,7 @@ pub async fn search(query: &str, kind: Kind) -> Result<Vec<Candidate>> {
             .pointer("/studios/nodes/0/name")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let format = m
-            .get("format")
-            .and_then(|v| v.as_str())
-            .map(pretty_format);
+        let format = m.get("format").and_then(|v| v.as_str()).map(pretty_format);
 
         let mut fields = Map::new();
         // Genres, source, and score are shared across anime and manga.
@@ -151,14 +148,17 @@ pub async fn search(query: &str, kind: Kind) -> Result<Vec<Candidate>> {
                 // at a glance: "TV · 2013 · Wit Studio".
                 descriptor(&[
                     format.clone(),
-                    m.get("seasonYear").and_then(|v| v.as_i64()).or(year).map(|y| y.to_string()),
+                    m.get("seasonYear")
+                        .and_then(|v| v.as_i64())
+                        .or(year)
+                        .map(|y| y.to_string()),
                     studio,
                 ])
             }
             Kind::Manga => {
-                if let Some(author) = staff_role(m, |r| {
-                    r.contains("story") || r.contains("original creator")
-                }) {
+                if let Some(author) =
+                    staff_role(m, |r| r.contains("story") || r.contains("original creator"))
+                {
                     fields.insert("author".into(), author.into());
                 }
                 if let Some(artist) = staff_role(m, |r| r == "art") {

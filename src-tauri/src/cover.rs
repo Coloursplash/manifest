@@ -24,7 +24,9 @@ fn extension_of(url: &str) -> &str {
         .unwrap_or(url)
         .rsplit('.')
         .next()
-        .filter(|ext| (2..=4).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+        .filter(|ext| {
+            (2..=4).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphanumeric())
+        })
         .unwrap_or("jpg")
 }
 

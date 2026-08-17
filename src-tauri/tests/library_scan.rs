@@ -6,7 +6,9 @@ mod common;
 
 use common::TempLib;
 use manifest_lib::library::schema::{Medium, Status};
-use manifest_lib::library::store::{create_entry, ensure_layout, entry_path, load_all, NewEntry, trash_entry};
+use manifest_lib::library::store::{
+    create_entry, ensure_layout, entry_path, load_all, trash_entry, NewEntry,
+};
 use serde_json::json;
 
 #[test]

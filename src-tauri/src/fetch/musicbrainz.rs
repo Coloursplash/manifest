@@ -26,7 +26,11 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>> {
 
     let mut out = Vec::new();
     for g in &groups {
-        let title = g.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let title = g
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if title.is_empty() {
             continue;
         }
@@ -46,7 +50,11 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>> {
             fields.insert("artist".into(), a.clone().into());
         }
         // "Album" / "EP" / "Single" — a useful tag on the entry.
-        if let Some(kind) = g.get("primary-type").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(kind) = g
+            .get("primary-type")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             fields.insert("type".into(), kind.into());
         }
 

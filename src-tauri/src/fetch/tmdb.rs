@@ -155,18 +155,20 @@ pub async fn details(key: &str, kind: Kind, id: &str) -> Result<Map<String, Valu
             if let Some(dir) = crew_job(crew, "Director") {
                 fields.insert("director".into(), dir.into());
             }
-            if let Some(writer) = crew_job(crew, "Screenplay").or_else(|| crew_job(crew, "Writer")) {
+            if let Some(writer) = crew_job(crew, "Screenplay").or_else(|| crew_job(crew, "Writer"))
+            {
                 fields.insert("writer".into(), writer.into());
             }
-            if let Some(rt) = json.get("runtime").and_then(|v| v.as_i64()).filter(|r| *r > 0) {
+            if let Some(rt) = json
+                .get("runtime")
+                .and_then(|v| v.as_i64())
+                .filter(|r| *r > 0)
+            {
                 fields.insert("runtime".into(), rt.into());
             }
         }
         Kind::Tv => {
-            if let Some(creator) = json
-                .pointer("/created_by/0/name")
-                .and_then(|v| v.as_str())
-            {
+            if let Some(creator) = json.pointer("/created_by/0/name").and_then(|v| v.as_str()) {
                 fields.insert("creator".into(), creator.into());
             }
             if let Some(eps) = json.get("number_of_episodes").and_then(|v| v.as_i64()) {

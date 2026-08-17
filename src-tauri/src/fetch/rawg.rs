@@ -29,7 +29,11 @@ pub async fn search(query: &str, key: Option<&str>) -> Result<Vec<Candidate>> {
 
     let mut out = Vec::new();
     for r in &results {
-        let title = r.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let title = r
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if title.is_empty() {
             continue;
         }
@@ -68,7 +72,10 @@ pub async fn search(query: &str, key: Option<&str>) -> Result<Vec<Candidate>> {
             .filter(|s| !s.is_empty());
 
         // Developer / publisher / description come from the detail call.
-        let reference = r.get("id").and_then(|v| v.as_i64()).map(|id| id.to_string());
+        let reference = r
+            .get("id")
+            .and_then(|v| v.as_i64())
+            .map(|id| id.to_string());
 
         out.push(Candidate {
             title,
@@ -142,7 +149,12 @@ fn names(list: Option<&Value>, pointer: &str) -> Option<Value> {
 fn join(arr: &Value) -> Value {
     let joined = arr
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
         .unwrap_or_default();
     Value::from(joined)
 }

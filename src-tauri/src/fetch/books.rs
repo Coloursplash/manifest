@@ -60,7 +60,11 @@ async fn open_library(query: &str) -> Result<Vec<Candidate>> {
 
     let mut out = Vec::new();
     for d in &docs {
-        let title = d.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let title = d
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if title.is_empty() {
             continue;
         }
@@ -137,7 +141,11 @@ async fn google_books(query: &str) -> Result<Vec<Candidate>> {
             Some(v) => v,
             None => continue,
         };
-        let title = info.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let title = info
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if title.is_empty() {
             continue;
         }

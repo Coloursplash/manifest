@@ -20,11 +20,7 @@ impl TempLib {
     /// Create a fresh, empty library root under the OS temp dir.
     pub fn new() -> Self {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "manifest-it-{}-{}",
-            std::process::id(),
-            n
-        ));
+        let root = std::env::temp_dir().join(format!("manifest-it-{}-{}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("create temp library root");
         TempLib { root }
