@@ -406,6 +406,19 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   can't otherwise show), and `DateField` grew an explicit × — emptying a native date input
   isn't reliable in the webview, and these dates are load-bearing for the timeline.
 
+- **Log dialog on add (Letterboxd-style).** Removing the auto-date left a hole: to log
+  something you'd added you had to open its page. Now clicking the **done** quick-status
+  (Watched / Read / Played / Beaten) on a search hit opens a log dialog *before* anything is
+  written — date, `#rewatch` chip, free tags, a rating, and a review body. Commit does
+  `create_entry` → `append_note` → `patch_entry` (rating only if set); backing out writes
+  nothing at all. `want`/`active` still file in one click, no dialog. Two components came out
+  of `EntryDetail` to make this reuse rather than duplication: `components/Rating.tsx`
+  (`RatingCircles`) and `components/NoteEditor.tsx` (+ a `NoteDraft` type, an optional
+  `withRating`, and an overridable `submitLabel`). `NoteEditor.onSubmit` now takes a single
+  `NoteDraft` instead of three positional args. `AddEntryModal` gained a `create()` helper
+  (fetch details → `createEntry`) shared by the instant path and the dialog, so `addManual`
+  routes through the same code. Styles: `.logdialog*`. 154 frontend tests.
+
 Known: user has reported bugs in the new views to be triaged.
 
 v1 core loop complete. Next: import from other trackers, custom media types, more frontend

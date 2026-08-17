@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Cover } from "../components/Cover";
+import { NoteEditor } from "../components/NoteEditor";
+import { RatingCircles } from "../components/Rating";
 import { IconBack, IconCheck, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
 import {
   appendNote,
@@ -18,7 +20,6 @@ import {
   statusLabel,
   VERBS,
   type Entry,
-  type Medium,
   type Status,
 } from "../lib/types";
 
@@ -304,8 +305,8 @@ export function EntryDetail({
                 medium={entry.medium}
                 mode="add"
                 initial={{ date: todayISO(), tags: [], body: "" }}
-                onSubmit={async (d, t, b) => {
-                  onChanged(await appendNote(entry.id, d, t, b));
+                onSubmit={async (d) => {
+                  onChanged(await appendNote(entry.id, d.date, d.tags, d.body));
                   setComposing(false);
                 }}
                 onCancel={() => setComposing(false)}
@@ -337,60 +338,6 @@ export function EntryDetail({
           {error && <p className="error">{error}</p>}
         </div>
       </div>
-    </div>
-  );
-}
-
-// --- rating: five half-fillable circles = /10 ---
-
-function RatingCircles({
-  value,
-  onSet,
-}: {
-  value?: number;
-  onSet: (n: number | null) => void;
-}) {
-  const v = Math.round(value ?? 0);
-  const [hover, setHover] = useState<number | null>(null);
-  const shown = hover ?? v; // preview while hovering
-
-  // Which /10 value a click at this x lands on (left half = half point).
-  function valueAt(i: number, e: React.MouseEvent<HTMLButtonElement>): number {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const leftHalf = e.clientX - rect.left < rect.width / 2;
-    return (i - 1) * 2 + (leftHalf ? 1 : 2);
-  }
-
-  return (
-    <div className="rating" onMouseLeave={() => setHover(null)}>
-      <span className="label">Rating</span>
-      <div className="rcircles">
-        {[1, 2, 3, 4, 5].map((i) => {
-          const fill = Math.max(0, Math.min(1, (shown - (i - 1) * 2) / 2));
-          const cls = fill >= 1 ? "rcirc--full" : fill > 0 ? "rcirc--half" : "";
-          return (
-            <button
-              key={i}
-              className={`rcirc ${cls} ${hover !== null ? "rcirc--preview" : ""}`}
-              onMouseMove={(e) => setHover(valueAt(i, e))}
-              onClick={(e) => onSet(valueAt(i, e))}
-            />
-          );
-        })}
-      </div>
-      <span className={`rating__value ${hover !== null ? "rating__value--preview" : ""}`}>
-        {shown || "—"}
-        <span className="rating__max">/10</span>
-      </span>
-      {v > 0 && (
-        <button
-          className="btn btn--ghost btn--icon-sm btn--dim"
-          onClick={() => onSet(null)}
-          title="Clear rating"
-        >
-          <IconClose size={15} />
-        </button>
-      )}
     </div>
   );
 }
@@ -442,8 +389,8 @@ function NoteItem({
         medium={entry.medium}
         mode="edit"
         initial={{ date: block.date || todayISO(), tags: block.tags, body: block.body }}
-        onSubmit={async (d, t, b) => {
-          onChanged(await updateNote(entry.id, index, d, t, b));
+        onSubmit={async (d) => {
+          onChanged(await updateNote(entry.id, index, d.date, d.tags, d.body));
           setEditing(false);
         }}
         onCancel={() => setEditing(false)}
@@ -481,128 +428,6 @@ function NoteItem({
         </div>
       </div>
       {block.body && <div className="note-block__body">{block.body}</div>}
-    </div>
-  );
-}
-
-// --- shared editor for adding + editing a log entry ---
-
-function NoteEditor({
-  medium,
-  mode,
-  initial,
-  onSubmit,
-  onCancel,
-}: {
-  medium: Medium;
-  mode: "add" | "edit";
-  initial: { date: string; tags: string[]; body: string };
-  onSubmit: (date: string, tags: string[], body: string) => Promise<void>;
-  onCancel?: () => void;
-}) {
-  const repeatTag = VERBS[medium].repeat;
-  const verb = VERBS[medium].past;
-
-  const [date, setDate] = useState(initial.date);
-  const [tags, setTags] = useState<string[]>(initial.tags);
-  const [tagInput, setTagInput] = useState("");
-  const [body, setBody] = useState(initial.body);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function addTag(raw: string) {
-    const t = raw.trim().replace(/^#/, "").toLowerCase();
-    if (t && !tags.includes(t)) setTags([...tags, t]);
-    setTagInput("");
-  }
-  function toggleTag(t: string) {
-    setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t]);
-  }
-
-  async function submit() {
-    setBusy(true);
-    setError(null);
-    try {
-      await onSubmit(date.trim(), tags, body.trim());
-      if (mode === "add") {
-        setDate(todayISO());
-        setTags([]);
-        setTagInput("");
-        setBody("");
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const submitLabel =
-    mode === "edit" ? "Save" : body.trim() ? "Log with note" : `Just ${verb} it`;
-
-  return (
-    <div className={`note-editor stack ${mode === "edit" ? "note-editor--edit" : ""}`}>
-      {mode === "edit" && <div className="note-editor__head label">Editing entry</div>}
-      <div className="row wrap">
-        <input
-          className="input"
-          style={{ width: 160 }}
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-        <button
-          type="button"
-          className={`chip ${tags.includes(repeatTag) ? "chip--on" : ""}`}
-          onClick={() => toggleTag(repeatTag)}
-        >
-          #{repeatTag}
-        </button>
-        {tags
-          .filter((t) => t !== repeatTag)
-          .map((t) => (
-            <span
-              className="tag tag--removable"
-              key={t}
-              onClick={() => toggleTag(t)}
-              title="remove"
-            >
-              #{t} ✕
-            </span>
-          ))}
-        <input
-          className="input"
-          style={{ width: 130 }}
-          value={tagInput}
-          onChange={(e) => setTagInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === ",") {
-              e.preventDefault();
-              addTag(tagInput);
-            }
-          }}
-          placeholder="+ tag"
-        />
-      </div>
-
-      <textarea
-        className="textarea"
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Thoughts (optional)"
-      />
-
-      <div className="row">
-        <button className="btn btn--accent btn--lg" onClick={submit} disabled={busy}>
-          {submitLabel}
-        </button>
-        {onCancel && (
-          <button className="btn" onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
-        )}
-        {error && <span className="error">{error}</span>}
-      </div>
     </div>
   );
 }

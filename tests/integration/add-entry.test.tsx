@@ -24,23 +24,66 @@ describe("add-entry flow", () => {
     await user.click(screen.getByRole("button", { name: /add entry/i }));
     await user.type(screen.getByRole("textbox", { name: /search library/i }), "arrival");
 
-    // Search is 300ms-debounced; wait for the result card, then commit as "Watched".
+    // Search is 300ms-debounced; wait for the result card, then hit "Watched".
     const watched = await screen.findByRole("button", { name: "Watched" }, { timeout: 2000 });
     await user.click(watched);
 
-    // create_entry hit the store...
+    // That opens the log dialog rather than filing silently — nothing is written
+    // until you commit, so the date and your thoughts are yours to enter.
+    expect(await screen.findByText(/Log a watch/)).toBeInTheDocument();
+    expect(backend.entries.has("film/arrival")).toBe(false);
+
+    // Pick the date you actually saw it, rate it, say something.
+    const date = screen.getByLabelText("Date");
+    await user.clear(date);
+    await user.type(date, "2026-05-25");
+    await user.click(screen.getByRole("button", { name: "Rate 8 out of 10" }));
+    await user.type(screen.getByPlaceholderText(/Thoughts/), "Heptapods.");
+    await user.click(screen.getByRole("button", { name: "Log it" }));
+
+    // Now it lands: the entry, the dated block, and the rating.
     await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
     const created = backend.entries.get("film/arrival")!;
     expect(created.title).toBe("Arrival");
     expect(created.status).toBe("done");
+    expect(created.notes).toContain("2026-05-25");
+    expect(created.notes).toContain("Heptapods.");
+    expect(created.rating).toBe(8);
 
-    // ...and that's *all* it did. Adding as "Watched" must not invent dates on
-    // your behalf: no log block for today, no `finished`. Picking when you saw
-    // it is the log editor's job — a guessed date is a phantom timeline row.
-    expect(backend.callsTo("append_note").some((a) => a.id === "film/arrival")).toBe(false);
-    expect(backend.callsTo("patch_entry").some((a) => a.id === "film/arrival")).toBe(false);
+    // Still no invented `finished` date — the log block is the record.
     expect(created.finished).toBeUndefined();
-    expect(created.notes).toBeUndefined();
+  });
+
+  it("writes nothing if you back out of the log dialog", async () => {
+    const user = userEvent.setup();
+    const { backend } = renderApp({ hasTmdbKey: true, candidates: CANDIDATES });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /add entry/i }));
+    await user.type(screen.getByRole("textbox", { name: /search library/i }), "arrival");
+    await user.click(await screen.findByRole("button", { name: "Watched" }, { timeout: 2000 }));
+
+    await user.click(await screen.findByRole("button", { name: /Back/ }));
+
+    expect(backend.entries.has("film/arrival")).toBe(false);
+    expect(backend.callsTo("create_entry")).toHaveLength(0);
+    // …and you're back on the results, free to pick a different status.
+    expect(await screen.findByRole("button", { name: "Watched" })).toBeInTheDocument();
+  });
+
+  it("files a Plan add immediately, with no log dialog", async () => {
+    const user = userEvent.setup();
+    const { backend } = renderApp({ hasTmdbKey: true, candidates: CANDIDATES });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /add entry/i }));
+    await user.type(screen.getByRole("textbox", { name: /search library/i }), "arrival");
+    await user.click(await screen.findByRole("button", { name: "Plan" }, { timeout: 2000 }));
+
+    await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
+    expect(backend.entries.get("film/arrival")!.status).toBe("want");
+    expect(screen.queryByText(/Log a watch/)).not.toBeInTheDocument();
+    expect(backend.callsTo("append_note")).toHaveLength(0);
   });
 
   it("gates the film provider behind a TMDB key and offers a manual add", async () => {

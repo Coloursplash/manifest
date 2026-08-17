@@ -2,11 +2,20 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { Cover } from "../components/Cover";
 import { IconBack, IconClose, IconSearch } from "../components/icons";
-import { createEntry, fetchDetails, searchMetadata } from "../lib/api";
+import { NoteEditor, type NoteDraft } from "../components/NoteEditor";
+import {
+  appendNote,
+  createEntry,
+  fetchDetails,
+  patchEntry,
+  searchMetadata,
+} from "../lib/api";
 import { formatValue, humanizeLabel } from "../lib/fields";
+import { todayISO } from "../lib/notes";
 import {
   MEDIUM_LABEL,
   statusLabel,
+  VERBS,
   type Candidate,
   type Entry,
   type Medium,
@@ -70,6 +79,10 @@ export function AddEntryModal({
   const [added, setAdded] = useState<Record<string, Status>>({});
   // The result the user clicked to inspect before committing (null = grid view).
   const [preview, setPreview] = useState<{ c: Candidate; key: string } | null>(null);
+  // The hit being logged: filing something as watched/read/played opens the log
+  // dialog first, so the date and your thoughts are yours to enter (Letterboxd's
+  // move). null = not logging.
+  const [logging, setLogging] = useState<{ c: Candidate; key: string } | null>(null);
   const [previewExtra, setPreviewExtra] = useState<Record<string, unknown>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -145,43 +158,64 @@ export function AddEntryModal({
     }
   }
 
-  async function add(c: Candidate, key: string, status: Status) {
+  /** File a candidate under a status. Pulls crew/genres for providers that need
+   *  a follow-up (TMDB), then folds in the summary. Enrichment is best-effort —
+   *  a failed detail fetch still files the entry with what search gave us. */
+  async function create(c: Candidate, status: Status): Promise<Entry> {
+    const details = c.reference
+      ? await fetchDetails(medium, c.reference).catch(() => ({}))
+      : {};
+    const fields: Record<string, unknown> = { ...(c.fields ?? {}), ...details };
+    if (c.summary && fields.summary === undefined) fields.summary = c.summary;
+
+    return createEntry({
+      medium,
+      title: c.title,
+      year: c.year,
+      cover: c.cover,
+      status,
+      fields,
+    });
+  }
+
+  // "Watched"/"Read"/"Played" means you have something to say about when and
+  // how it went, so it opens the log dialog rather than filing silently. Plan
+  // and In-progress are pure filing — one click, no questions.
+  function add(c: Candidate, key: string, status: Status) {
+    if (status === "done") {
+      setLogging({ c, key });
+      return;
+    }
+    void file(c, key, status);
+  }
+
+  async function file(c: Candidate, key: string, status: Status) {
     setError(null);
     try {
-      // Pull crew/genres for providers that need a follow-up (TMDB), then fold
-      // in the summary. Enrichment is best-effort — a failed detail fetch still
-      // files the entry with what search already gave us.
-      const details = c.reference
-        ? await fetchDetails(medium, c.reference).catch(() => ({}))
-        : {};
-      const fields: Record<string, unknown> = { ...(c.fields ?? {}), ...details };
-      if (c.summary && fields.summary === undefined) fields.summary = c.summary;
-
-      const created = await createEntry({
-        medium,
-        title: c.title,
-        year: c.year,
-        cover: c.cover,
-        status,
-        fields,
-      });
-      onCreated(created);
+      onCreated(await create(c, status));
       setAdded((a) => ({ ...a, [key]: status }));
     } catch (e) {
       setError(String(e));
     }
   }
 
-  async function addManual(status: Status) {
-    if (!query.trim()) return;
-    setError(null);
-    try {
-      const created = await createEntry({ medium, title: query.trim(), status });
-      onCreated(created);
-      setAdded((a) => ({ ...a, [`manual:${query.trim()}`]: status }));
-    } catch (e) {
-      setError(String(e));
+  /** Commit the log dialog: create the entry, write the dated block, and apply
+   *  a rating if one was given. The note is what makes it show on the timeline. */
+  async function commitLog(c: Candidate, key: string, draft: NoteDraft) {
+    const created = await create(c, "done");
+    let entry = await appendNote(created.id, draft.date, draft.tags, draft.body);
+    if (draft.rating != null) {
+      entry = await patchEntry(created.id, { rating: draft.rating });
     }
+    onCreated(entry);
+    setAdded((a) => ({ ...a, [key]: "done" }));
+    setLogging(null);
+  }
+
+  function addManual(status: Status) {
+    const title = query.trim();
+    if (!title) return;
+    add({ title }, `manual:${title}`, status);
   }
 
   const Shell = panel ? PanelShell : ModalShell;
@@ -191,7 +225,14 @@ export function AddEntryModal({
       title={initialMedium ? `Add ${MEDIUM_LABEL[medium]} to library` : "Add to library"}
       onClose={onClose}
     >
-        {preview ? (
+        {logging ? (
+          <LogDialog
+            candidate={logging.c}
+            medium={medium}
+            onCancel={() => setLogging(null)}
+            onSubmit={(draft) => commitLog(logging.c, logging.key, draft)}
+          />
+        ) : preview ? (
           <CandidatePreview
             candidate={preview.c}
             extra={previewExtra}
@@ -362,6 +403,57 @@ export function AddEntryModal({
 
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
     </Shell>
+  );
+}
+
+/** The log dialog: what you get instead of a silent "filed as watched". Pick the
+ *  date, tag it a rewatch, rate it, say something — or just hit the button and
+ *  take today's date. Nothing is written until you commit, so backing out here
+ *  leaves no entry behind. */
+function LogDialog({
+  candidate,
+  medium,
+  onSubmit,
+  onCancel,
+}: {
+  candidate: Candidate;
+  medium: Medium;
+  onSubmit: (draft: NoteDraft) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const verbs = VERBS[medium];
+  return (
+    <div className="stack">
+      <div className="logdialog__head">
+        <button className="btn btn--ghost btn--sm" onClick={onCancel}>
+          <IconBack size={15} /> Back
+        </button>
+      </div>
+
+      <div className="logdialog__subject">
+        <div className="logdialog__cover">
+          <Cover url={candidate.cover} title={candidate.title} />
+        </div>
+        <div className="stack" style={{ gap: 4 }}>
+          <div className="label">Log a {verbs.log}</div>
+          <div className="logdialog__title">
+            {candidate.title}
+            {candidate.year ? ` (${candidate.year})` : ""}
+          </div>
+          {candidate.subtitle && <div className="scard__sub">{candidate.subtitle}</div>}
+        </div>
+      </div>
+
+      <NoteEditor
+        medium={medium}
+        mode="add"
+        withRating
+        initial={{ date: todayISO(), tags: [], body: "", rating: null }}
+        submitLabel="Log it"
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+      />
+    </div>
   );
 }
 

@@ -2286,3 +2286,26 @@ body.is-reordering {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* Log dialog: the "what did you think?" step between picking a hit and filing
+   it as watched/read/played. Shown in place of the results grid. */
+.logdialog__head {
+  display: flex;
+  margin-bottom: 2px;
+}
+.logdialog__subject {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--line);
+}
+.logdialog__cover {
+  width: 64px;
+  flex: none;
+}
+.logdialog__title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
