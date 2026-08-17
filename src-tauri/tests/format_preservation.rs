@@ -67,12 +67,23 @@ fn appending_a_note_never_rewrites_existing_blocks() {
     let root = &lib.root;
     seed(root);
 
-    append_note(root, "film/br2049", "2026-08-01", &["rewatch".into()], "Sound design.").unwrap();
+    append_note(
+        root,
+        "film/br2049",
+        "2026-08-01",
+        None,
+        &["rewatch".into()],
+        "Sound design.",
+    )
+    .unwrap();
 
     let after = std::fs::read_to_string(entry_path(root, Medium::Film, "br2049")).unwrap();
     // The original block is byte-for-byte present, and it comes before the new one.
     let original_block = "2017-10-06 (IMAX)\nDeliberate pacing, worth it.";
-    assert!(after.contains(original_block), "original note block must be preserved verbatim");
+    assert!(
+        after.contains(original_block),
+        "original note block must be preserved verbatim"
+    );
     let new_block = "2026-08-01 #rewatch\nSound design.";
     assert!(after.contains(new_block));
     assert!(after.find(original_block).unwrap() < after.find(new_block).unwrap());

@@ -2357,6 +2357,36 @@ body.is-reordering {
   font-size: 0.85rem;
 }
 
+/* "over 19 days" under a timeline card whose log block spanned a stretch. */
+.tl-card__span {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* The span row in the log editor: Started → Finished, for media you get through
+   over days rather than in one sitting. */
+.note-editor__span {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.note-editor__date {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.note-editor__date .input {
+  width: 150px;
+}
+.note-editor__arrow {
+  padding-bottom: 10px;
+  color: var(--faint);
+  font-size: 0.9rem;
+}
+
 /* Log dialog: the "what did you think?" step between picking a hit and filing
    it as watched/read/played. Shown in place of the results grid. */
 .logdialog__head {

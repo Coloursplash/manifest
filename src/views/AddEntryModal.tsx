@@ -21,6 +21,7 @@ import { formatValue, humanizeLabel } from "../lib/fields";
 import { todayISO } from "../lib/notes";
 import {
   MEDIUM_LABEL,
+  PROGRESS,
   statusLabel,
   VERBS,
   type Candidate,
@@ -252,12 +253,25 @@ export function AddEntryModal({
   }
 
   /** Commit the log dialog: create the entry, write the dated block, and apply
-   *  a rating if one was given. The note is what makes it show on the timeline. */
+   *  a rating if one was given. The note is what makes it show on the timeline.
+   *
+   *  For media you get through over time, the dates you just typed are also the
+   *  entry's `started`/`finished` — the fields the entry page shows — so fill
+   *  them in. Film and music are left alone: they have no Progress section, and
+   *  a `finished` key they can't display is exactly the phantom-date bug we
+   *  removed. Nothing here is guessed; it's what the user entered. */
   async function commitLog(c: Candidate, key: string, draft: NoteDraft) {
     const created = await create(c, "done");
-    let entry = await appendNote(created.id, draft.date, draft.tags, draft.body);
-    if (draft.rating != null) {
-      entry = await patchEntry(created.id, { rating: draft.rating });
+    let entry = await appendNote(created.id, draft.date, draft.tags, draft.body, draft.end);
+
+    const patch: Record<string, unknown> = {};
+    if (draft.rating != null) patch.rating = draft.rating;
+    if (!PROGRESS[medium].single && draft.date) {
+      if (draft.end) patch.started = draft.date;
+      patch.finished = draft.end ?? draft.date;
+    }
+    if (Object.keys(patch).length) {
+      entry = await patchEntry(created.id, patch);
     }
     onCreated(entry);
     setAdded((a) => ({ ...a, [key]: "done" }));

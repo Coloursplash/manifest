@@ -207,6 +207,66 @@ describe("add-entry flow", () => {
     });
   });
 
+  // You don't watch a season on a Tuesday. Logging one from the add flow has to
+  // record the stretch, not make you pick a day and invent the rest.
+  it("logs a TV show over a range of dates, not a single day", async () => {
+    const user = userEvent.setup();
+    const { backend } = renderApp({
+      hasTmdbKey: true,
+      candidates: [{ title: "Severance", year: 2022, cover: "s.jpg" }],
+    });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    // Filter the library to TV first, so the add flow opens on that category.
+    await user.keyboard("2");
+    await user.keyboard("n");
+    await user.keyboard("severance");
+    await screen.findByText("Severance (2022)", {}, { timeout: 2000 });
+    await user.keyboard("{Enter}{Enter}");
+
+    // The log dialog asks for a stretch, not a date.
+    expect(await screen.findByText(/Log a watch/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Date")).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText("From"));
+    await user.type(screen.getByLabelText("From"), "2026-01-05");
+    await user.clear(screen.getByLabelText("To"));
+    await user.type(screen.getByLabelText("To"), "2026-02-10");
+    await user.type(screen.getByPlaceholderText(/Thoughts/), "Took our time.");
+    await user.click(screen.getByRole("button", { name: "Log it" }));
+
+    await waitFor(() => expect(backend.entries.has("tv/severance")).toBe(true));
+    const made = backend.entries.get("tv/severance")!;
+    expect(made.notes).toContain("2026-01-05..2026-02-10");
+    expect(made.notes).toContain("Took our time.");
+    // The dates you typed are the entry's own too — TV has somewhere to show them.
+    expect(made.started).toBe("2026-01-05");
+    expect(made.finished).toBe("2026-02-10");
+  });
+
+  it("still logs a film as the one sitting it was", async () => {
+    const user = userEvent.setup();
+    const { backend } = renderApp({ hasTmdbKey: true, candidates: CANDIDATES });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await user.keyboard("n");
+    await user.keyboard("arrival");
+    await screen.findByText("Arrival (2016)", {}, { timeout: 2000 });
+    await user.keyboard("{Enter}{Enter}");
+
+    expect(await screen.findByText(/Log a watch/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Date")).toBeInTheDocument();
+    expect(screen.queryByLabelText("From")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Log it" }));
+
+    await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
+    const made = backend.entries.get("film/arrival")!;
+    expect(made.notes).not.toContain("..");
+    // No `finished` key: a film has no Dates section to show it in, and an
+    // invisible date is exactly the phantom-timeline-row bug from before.
+    expect(made.finished).toBeUndefined();
+    expect(made.started).toBeUndefined();
+  });
+
   it("gates the film provider behind a TMDB key and offers a manual add", async () => {
     const user = userEvent.setup();
     const { backend } = renderApp({ hasTmdbKey: false, candidates: CANDIDATES });

@@ -49,7 +49,10 @@ fn full_entry_lifecycle_round_trips_through_disk() {
     .unwrap();
     assert_eq!(created.id, "film/blade-runner-2049");
     assert_eq!(created.status, Some(Status::Want));
-    assert_eq!(created.extra.get("director").unwrap(), &json!("Denis Villeneuve"));
+    assert_eq!(
+        created.extra.get("director").unwrap(),
+        &json!("Denis Villeneuve")
+    );
 
     // It shows up in a fresh scan of the library.
     let all = load_all(root).unwrap();
@@ -73,11 +76,20 @@ fn full_entry_lifecycle_round_trips_through_disk() {
     assert_eq!(entry.rating, Some(4.5));
 
     // Log a watch, then a rewatch.
-    append_note(root, "film/blade-runner-2049", "2026-07-02", &[], "Gorgeous.").unwrap();
+    append_note(
+        root,
+        "film/blade-runner-2049",
+        "2026-07-02",
+        None,
+        &[],
+        "Gorgeous.",
+    )
+    .unwrap();
     let entry = append_note(
         root,
         "film/blade-runner-2049",
         "2026-08-01",
+        None,
         &["rewatch".into()],
         "Even better.",
     )
@@ -99,7 +111,10 @@ fn full_entry_lifecycle_round_trips_through_disk() {
     assert!(load_all(root).unwrap().is_empty());
     assert!(!entry_path(root, Medium::Film, "blade-runner-2049").exists());
     let trashed = root.join(".trash/films/blade-runner-2049.toml");
-    assert!(trashed.exists(), "entry should be moved into .trash, not hard-deleted");
+    assert!(
+        trashed.exists(),
+        "entry should be moved into .trash, not hard-deleted"
+    );
 }
 
 #[test]
@@ -153,12 +168,21 @@ fn note_edit_and_delete_address_blocks_by_index() {
     let root = &lib.root;
 
     create_entry(root, film("Sicario")).unwrap();
-    append_note(root, "film/sicario", "2026-01-01", &[], "First.").unwrap();
-    append_note(root, "film/sicario", "2026-02-01", &[], "Second.").unwrap();
-    append_note(root, "film/sicario", "2026-03-01", &[], "Third.").unwrap();
+    append_note(root, "film/sicario", "2026-01-01", None, &[], "First.").unwrap();
+    append_note(root, "film/sicario", "2026-02-01", None, &[], "Second.").unwrap();
+    append_note(root, "film/sicario", "2026-03-01", None, &[], "Third.").unwrap();
 
     // Edit the middle block.
-    let entry = edit_note(root, "film/sicario", 1, "2026-02-02", &["rewatch".into()], "Second, fixed.").unwrap();
+    let entry = edit_note(
+        root,
+        "film/sicario",
+        1,
+        "2026-02-02",
+        None,
+        &["rewatch".into()],
+        "Second, fixed.",
+    )
+    .unwrap();
     let notes = entry.notes.unwrap();
     assert!(notes.contains("2026-02-02 #rewatch"));
     assert!(notes.contains("Second, fixed."));
@@ -172,7 +196,7 @@ fn note_edit_and_delete_address_blocks_by_index() {
     assert!(notes.contains("Third."));
 
     // Out-of-range index is an error, not a panic.
-    assert!(edit_note(root, "film/sicario", 9, "2026-04-01", &[], "x").is_err());
+    assert!(edit_note(root, "film/sicario", 9, "2026-04-01", None, &[], "x").is_err());
     assert!(delete_note(root, "film/sicario", 9).is_err());
 }
 
@@ -188,7 +212,10 @@ fn set_status_clears_when_none() {
     let entry = set_status(root, "film/prisoners", None).unwrap();
     assert_eq!(entry.status, None);
     let text = std::fs::read_to_string(entry_path(root, Medium::Film, "prisoners")).unwrap();
-    assert!(!text.contains("status ="), "status key should be removed entirely");
+    assert!(
+        !text.contains("status ="),
+        "status key should be removed entirely"
+    );
 }
 
 #[test]
@@ -271,5 +298,75 @@ fn a_hand_written_non_boolean_owned_reads_as_not_owned() {
 
     let entry = load_one(root, "book/piranesi").unwrap();
     assert_eq!(entry.owned, None, "a string is not a boolean");
-    assert!(std::fs::read_to_string(&path).unwrap().contains("owned = \"yes\""));
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .contains("owned = \"yes\""));
+}
+
+/// You don't read a book on a date — you read it over three weeks. A log block
+/// can carry a span, written `START..END` on the header line so it stays
+/// hand-editable, and a single date is still just a single date.
+#[test]
+fn a_log_block_can_span_a_range_of_dates() {
+    let lib = TempLib::new();
+    let root = &lib.root;
+    create_entry(
+        root,
+        NewEntry {
+            medium: Medium::Book,
+            title: "Piranesi".into(),
+            year: None,
+            cover: None,
+            status: Some(Status::Active),
+            fields: serde_json::Map::new(),
+            notes: None,
+        },
+    )
+    .unwrap();
+
+    let entry = append_note(
+        root,
+        "book/piranesi",
+        "2026-03-01",
+        Some("2026-03-19"),
+        &["reread".into()],
+        "Read it slowly.",
+    )
+    .unwrap();
+    let notes = entry.notes.unwrap();
+    assert!(
+        notes.contains("2026-03-01..2026-03-19 #reread"),
+        "got: {notes}"
+    );
+
+    // A single-sitting log keeps the bare date — no empty range suffix.
+    append_note(root, "book/piranesi", "2026-04-02", None, &[], "").unwrap();
+    // Nor when the two ends are the same day.
+    let entry = append_note(
+        root,
+        "book/piranesi",
+        "2026-05-05",
+        Some("2026-05-05"),
+        &[],
+        "",
+    )
+    .unwrap();
+    let notes = entry.notes.unwrap();
+    assert!(notes.contains("\n2026-04-02\n"), "got: {notes}");
+    assert!(notes.trim_end().ends_with("2026-05-05"), "got: {notes}");
+    // Only the first block spans; the bare dates gained no empty ".." suffix.
+    assert_eq!(notes.matches("..").count(), 1, "got: {notes}");
+
+    // Editing a block can add or drop the span.
+    let entry = edit_note(
+        root,
+        "book/piranesi",
+        1,
+        "2026-04-02",
+        Some("2026-04-06"),
+        &[],
+        "Took a few evenings.",
+    )
+    .unwrap();
+    assert!(entry.notes.unwrap().contains("2026-04-02..2026-04-06"));
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { parseNotes, todayISO } from "./notes";
+import { formatSpan, parseNotes, spanCovers, todayISO } from "./notes";
 
 describe("parseNotes", () => {
   it("returns [] for empty/whitespace/undefined", () => {
@@ -73,5 +73,68 @@ describe("todayISO", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 0, 5, 12, 0, 0)); // Jan 5 2026, local
     expect(todayISO()).toBe("2026-01-05");
+  });
+});
+
+// Only film and music happen in one sitting. A block can therefore carry a
+// span, written `START..END`, so "I read it over March" is expressible without
+// picking one day and inventing the rest.
+describe("spanned blocks", () => {
+  it("parses a START..END header", () => {
+    const [b] = parseNotes("2026-03-01..2026-03-19 #reread\nSlowly.");
+    expect(b).toEqual({
+      date: "2026-03-01",
+      end: "2026-03-19",
+      tags: ["reread"],
+      rest: "",
+      body: "Slowly.",
+    });
+  });
+
+  it("accepts the separators someone might hand-type instead", () => {
+    for (const sep of ["..", " → ", " – ", " — ", " - ", " to "]) {
+      const [b] = parseNotes(`2026-03-01${sep}2026-03-19`);
+      expect(b.date, sep).toBe("2026-03-01");
+      expect(b.end, sep).toBe("2026-03-19");
+    }
+  });
+
+  it("treats a span that ends where it starts as a single day", () => {
+    const [b] = parseNotes("2026-03-01..2026-03-01");
+    expect(b.date).toBe("2026-03-01");
+    expect(b.end).toBeUndefined();
+  });
+
+  it("leaves a plain dated block without an end", () => {
+    expect(parseNotes("2026-03-01 #rewatch")[0].end).toBeUndefined();
+  });
+
+  it("doesn't mistake trailing prose for a range", () => {
+    const [b] = parseNotes("2026-03-01 took a while");
+    expect(b.end).toBeUndefined();
+    expect(b.rest).toBe("took a while");
+  });
+});
+
+describe("formatSpan / spanCovers", () => {
+  it("shows one date, or an arrowed range", () => {
+    expect(formatSpan("2026-03-01")).toBe("2026-03-01");
+    expect(formatSpan("2026-03-01", "2026-03-01")).toBe("2026-03-01");
+    expect(formatSpan("2026-03-01", "2026-03-19")).toBe("2026-03-01 → 2026-03-19");
+  });
+
+  it("covers every day of a span, inclusive", () => {
+    const span = { date: "2026-03-01", end: "2026-03-19" };
+    expect(spanCovers(span, "2026-03-01")).toBe(true);
+    expect(spanCovers(span, "2026-03-10")).toBe(true);
+    expect(spanCovers(span, "2026-03-19")).toBe(true);
+    expect(spanCovers(span, "2026-02-28")).toBe(false);
+    expect(spanCovers(span, "2026-03-20")).toBe(false);
+  });
+
+  it("covers only the day itself without an end, and nothing when undated", () => {
+    expect(spanCovers({ date: "2026-03-01" }, "2026-03-01")).toBe(true);
+    expect(spanCovers({ date: "2026-03-01" }, "2026-03-02")).toBe(false);
+    expect(spanCovers({ date: "" }, "2026-03-01")).toBe(false);
   });
 });

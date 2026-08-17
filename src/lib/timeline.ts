@@ -4,17 +4,22 @@
 //      its own event), and
 //   2. an entry's `finished` date, as a fallback — but only when no log block
 //      already covers that day (avoids a duplicate row for the same sitting).
+// A block that spans days (a book read over three weeks) lands on the day it
+// *ended* — that's the "I finished it" moment a diary records — and carries its
+// range along for the card to show.
 // Entries with neither a dated log nor a `finished` date don't appear.
 // Read-only: this never touches the `notes` text.
 
-import { parseNotes } from "./notes";
+import { parseNotes, spanCovers } from "./notes";
 import type { Entry, Medium } from "./types";
 
 /** Tags that mark a repeat viewing/reading, surfaced with a ↻ marker. */
 const REPEAT_TAGS = new Set(["rewatch", "reread"]);
 
 export interface TimelineEvent {
-  date: string; // YYYY-MM-DD, always present
+  date: string; // YYYY-MM-DD, always present — the day it ended
+  /** Set when the block spanned more than a day: where it started. */
+  from?: string;
   entry: Entry;
   kind: "log" | "finished";
   tags: string[]; // from the log block ("rewatch", …)
@@ -27,13 +32,12 @@ export function buildTimeline(entries: Entry[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   for (const entry of entries) {
-    const loggedDates = new Set<string>();
+    const blocks = parseNotes(entry.notes).filter((b) => b.date);
 
-    for (const block of parseNotes(entry.notes)) {
-      if (!block.date) continue;
-      loggedDates.add(block.date);
+    for (const block of blocks) {
       events.push({
-        date: block.date,
+        date: block.end ?? block.date,
+        from: block.end ? block.date : undefined,
         entry,
         kind: "log",
         tags: block.tags,
@@ -42,7 +46,9 @@ export function buildTimeline(entries: Entry[]): TimelineEvent[] {
       });
     }
 
-    if (entry.finished && !loggedDates.has(entry.finished)) {
+    // Anywhere inside a span counts as covered — a `finished` date that falls
+    // in the middle of the stretch you logged isn't a second event.
+    if (entry.finished && !blocks.some((b) => spanCovers(b, entry.finished!))) {
       events.push({
         date: entry.finished,
         entry,

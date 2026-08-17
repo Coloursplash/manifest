@@ -22,12 +22,15 @@ export const listEntries = () => invoke<Entry[]>("list_entries");
 
 export const getEntry = (id: string) => invoke<Entry>("get_entry", { id });
 
+/** `end` makes the block a span (`START..END`) — for the media you get through
+ *  over days or weeks rather than in one sitting. Omit it for a single day. */
 export const appendNote = (
   id: string,
   date: string,
   tags: string[],
   body: string,
-) => invoke<Entry>("append_note", { id, date, tags, body });
+  end?: string,
+) => invoke<Entry>("append_note", { id, date, end: end ?? null, tags, body });
 
 export const updateNote = (
   id: string,
@@ -35,7 +38,8 @@ export const updateNote = (
   date: string,
   tags: string[],
   body: string,
-) => invoke<Entry>("update_note", { id, index, date, tags, body });
+  end?: string,
+) => invoke<Entry>("update_note", { id, index, date, end: end ?? null, tags, body });
 
 export const deleteNote = (id: string, index: number) =>
   invoke<Entry>("delete_note", { id, index });

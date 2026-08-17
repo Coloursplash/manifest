@@ -98,3 +98,41 @@ describe("groupByMonth", () => {
     expect(groupByMonth([])).toEqual([]);
   });
 });
+
+// A block that ran over days belongs on the day it *ended* — that's the "I
+// finished it" moment a diary records — while still saying where it started.
+describe("spanned log blocks", () => {
+  it("lands the event on the end date and carries the start", () => {
+    const e = makeEntry({ notes: "2026-03-01..2026-03-19\nRead it slowly." });
+    const [ev] = buildTimeline([e]);
+    expect(ev.date).toBe("2026-03-19");
+    expect(ev.from).toBe("2026-03-01");
+  });
+
+  it("leaves `from` unset for a single-day block", () => {
+    expect(buildTimeline([makeEntry({ notes: "2026-03-19" })])[0].from).toBeUndefined();
+  });
+
+  it("counts a `finished` date inside the span as already covered", () => {
+    // Finished mid-stretch — one event, not a phantom second row.
+    const e = makeEntry({ notes: "2026-03-01..2026-03-19", finished: "2026-03-10" });
+    const events = buildTimeline([e]);
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("log");
+  });
+
+  it("still adds the fallback when `finished` falls outside every span", () => {
+    const e = makeEntry({ notes: "2026-03-01..2026-03-19", finished: "2026-05-02" });
+    const events = buildTimeline([e]);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ kind: "finished", date: "2026-05-02" });
+  });
+
+  it("sorts a span by its end date, alongside single-day events", () => {
+    const dates = buildTimeline([
+      makeEntry({ id: "book/a", title: "A", notes: "2026-03-01..2026-03-19" }),
+      makeEntry({ id: "film/b", title: "B", notes: "2026-03-05" }),
+    ]).map((ev) => ev.date);
+    expect(dates).toEqual(["2026-03-19", "2026-03-05"]);
+  });
+});

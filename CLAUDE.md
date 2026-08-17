@@ -120,17 +120,26 @@ One `.toml` file per entry, grouped by medium under the library folder, e.g.
   `done` = "Beaten", 100% is logged in `notes`, not a separate status)
 - music: `artist`, `type` (Album/EP/Single) — albums are single-sitting like film
 
-**Notes convention:** each block's header is `YYYY-MM-DD` optionally followed by `#tag`s
-(rewatch/reread are tags, not prose). The body is optional — a bare dated+tagged line is a
-valid "watched it" entry. `append_note` builds the header from a date + tag list; other
-fields change via `patch_entry` (which keeps `notes` last in the file).
+**Notes convention:** each block's header is a date — **or a span of dates** — optionally
+followed by `#tag`s (rewatch/reread are tags, not prose). The body is optional; a bare
+dated+tagged line is a valid "watched it" entry.
+
+```
+2026-07-09 #rewatch          a single sitting
+2026-03-01..2026-03-19       a stretch: read over three weeks
+```
+
+Spans exist because only film and music are single-sitting (see the second directive). We
+*write* `..` — trivial to hand-type — but `parseNotes` also accepts `→`, `–`, `—`, `-` and
+`to`, and collapses a span whose ends match back to one date. `append_note`/`update_note`
+take an optional `end` alongside `date`; other fields change via `patch_entry` (which keeps
+`notes` last in the file).
 
 Schema is intentionally loose and additive — unknown keys a user adds by hand must be
 preserved, not dropped. When you extend the schema, update this section and `GOAL.md`'s
 example if the shape of a core entry changes.
 
-Note: `notes` convention is a series of `YYYY-MM-DD (context)` headed blocks. "Log a
-rewatch" = append a new dated block; never rewrite existing blocks.
+"Log a rewatch" = append a new dated block; never rewrite existing blocks.
 
 ## External APIs
 
@@ -444,12 +453,7 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   `NoteDraft` instead of three positional args. `AddEntryModal` gained a `create()` helper
   (fetch details → `createEntry`) shared by the instant path and the dialog, so `addManual`
   routes through the same code. Styles: `.logdialog*`. 154 frontend tests.
-  - **Known wrong — it is film-shaped.** `NoteEditor` offers exactly one `date`, and the log
-    dialog opens for every medium's `done` status. That fits film and music and nothing else:
-    you can't say "watched S1 over March", or record a book you read across six weeks, without
-    inventing a date. Serial media (tv, anime, book, manga, game) need a period and/or
-    progress-as-you-go, not a point. **Don't build more on top of this shape** — see the
-    second directive; the fix is the open date-logging rework below.
+  - Shipped film-shaped (one `date` for every medium); fixed by the span work below.
 
 - **Keyboard-only add-and-log.** The add flow stopped at the pill: you could type a search
   but needed the mouse to pick a hit, so `n` → search → log broke halfway. The model is
@@ -497,15 +501,39 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
 
 Known: user has reported bugs in the new views to be triaged.
 
-**Open, and the top priority: date logging for serial media.** How you record when you
-watched/read/played something only works for film and music. TV, anime, books, manga and
-games are consumed over a stretch of time, and the app currently offers a single date in the
-log editor plus the bare `started`/`finished` pair — clunky at best, wrong at worst. This
-needs a product decision before code (a period? per-episode dated blocks? progress entries
-that carry their own date?) — **ask the user, don't guess and don't reuse the film flow.**
+- **Logging over time (spans).** The fix for the film-shaped log: you don't watch a season on
+  a Tuesday. A log block can now carry a **span**, so the question the editor asks matches the
+  medium.
+  - **Storage.** `build_block` in `store.rs` takes an `end: Option<&str>` and writes
+    `START..END` on the header line (dropping it when `end` is absent or equal to the start,
+    so single days stay bare). `append_note`/`edit_note` and both Tauri commands thread it
+    through; `api.ts`'s `appendNote`/`updateNote` take `end` as a trailing optional arg.
+  - **Parsing.** `NoteBlock` gains `end?`. `parseNotes` reads `..` / `→` / `–` / `—` / `-` /
+    `to` (liberal in, `..` out) and collapses a same-day span. New helpers: `formatSpan`
+    (display, `2026-03-01 → 2026-03-19`) and `spanCovers` (ISO dates compare as strings,
+    which is the point of the format).
+  - **The editor.** `NoteEditor` branches on `PROGRESS[medium].single`: film and music keep
+    one **Date**; everything else gets **From → To**, with From optional (blank = the single
+    day you finished, i.e. the old behaviour). They're deliberately *not* labelled
+    Started/Finished — those are the entry's own fields further up the same page, and a
+    reread's stretch is a different thing. Internally `date` holds the *end* so the primary
+    field is the same control in both shapes; `submit` reorders to chronological.
+  - **Entry dates.** Committing a log fills the entry's `started`/`finished` from what you
+    typed — but only for serial media, and in `EntryDetail` only when they're still empty (a
+    reread must not rewrite when you first read it). Film and music are left alone on purpose:
+    they have no Dates section, and an invisible `finished` key is exactly the phantom
+    timeline row that got removed earlier.
+  - **Timeline.** A span lands on the day it *ended* (the "I finished it" moment) and carries
+    `from`; the card shows "over N days". The `finished`-date fallback now dedupes against the
+    whole span via `spanCovers`, not just an exact date match.
+  - Tests: `a_log_block_can_span_a_range_of_dates` (Rust, 15 backend tests), span parsing +
+    separators + helpers in `notes.test.ts`, end-date placement and dedupe in
+    `timeline.test.ts`, per-medium editor shape and the `started`/`finished` fill rules in
+    `EntryDetail.test.tsx`, and two passes through the real App (a TV show logged over a
+    range; a film still logged as one sitting). 189 frontend tests.
 
-v1 core loop complete. Next: the date-logging rework above, then import from other trackers,
-custom media types, more frontend tests (component/view level).
+v1 core loop complete. Next: import from other trackers, custom media types, more frontend
+tests (component/view level).
 
 - **Backend integration suite added.** `src-tauri/tests/` (Cargo's convention — each file is a
   separate crate linking `manifest_lib`, so it exercises only the public surface). `lib.rs`'s

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Cover } from "../components/Cover";
-import { NoteEditor } from "../components/NoteEditor";
+import { NoteEditor, type NoteDraft } from "../components/NoteEditor";
 import { RatingCircles } from "../components/Rating";
 import { IconBack, IconCheck, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
 import {
@@ -12,7 +12,7 @@ import {
   updateNote,
 } from "../lib/api";
 import { formatValue, humanizeLabel } from "../lib/fields";
-import { parseNotes, todayISO, type NoteBlock } from "../lib/notes";
+import { formatSpan, parseNotes, todayISO, type NoteBlock } from "../lib/notes";
 import {
   MEDIUM_LABEL,
   PROGRESS,
@@ -76,6 +76,19 @@ export function EntryDetail({
   // the user's file.
   async function toggleOwned() {
     await patch({ owned: entry.owned === true ? null : true });
+  }
+
+  /** Write a new log block, and for media that span time let it fill the
+   *  entry's own `started`/`finished` — but only where they're still empty, so
+   *  logging a reread never rewrites when you first read it. */
+  async function logBlock(d: NoteDraft): Promise<Entry> {
+    const logged = await appendNote(entry.id, d.date, d.tags, d.body, d.end);
+    if (shape.single) return logged;
+    const patch: Record<string, unknown> = {};
+    if (d.end && !entry.started) patch.started = d.date;
+    const end = d.end ?? d.date;
+    if (end && !entry.finished) patch.finished = end;
+    return Object.keys(patch).length ? patchEntry(entry.id, patch) : logged;
   }
 
   async function remove() {
@@ -306,7 +319,7 @@ export function EntryDetail({
                 mode="add"
                 initial={{ date: todayISO(), tags: [], body: "" }}
                 onSubmit={async (d) => {
-                  onChanged(await appendNote(entry.id, d.date, d.tags, d.body));
+                  onChanged(await logBlock(d));
                   setComposing(false);
                 }}
                 onCancel={() => setComposing(false)}
@@ -388,9 +401,14 @@ function NoteItem({
       <NoteEditor
         medium={entry.medium}
         mode="edit"
-        initial={{ date: block.date || todayISO(), tags: block.tags, body: block.body }}
+        initial={{
+          date: block.date || todayISO(),
+          end: block.end,
+          tags: block.tags,
+          body: block.body,
+        }}
         onSubmit={async (d) => {
-          onChanged(await updateNote(entry.id, index, d.date, d.tags, d.body));
+          onChanged(await updateNote(entry.id, index, d.date, d.tags, d.body, d.end));
           setEditing(false);
         }}
         onCancel={() => setEditing(false)}
@@ -401,7 +419,9 @@ function NoteItem({
   return (
     <div className={`note-block ${block.body ? "" : "note-block--bare"}`}>
       <div className="note-block__head">
-        {block.date && <span className="note-block__date">{block.date}</span>}
+        {block.date && (
+          <span className="note-block__date">{formatSpan(block.date, block.end)}</span>
+        )}
         {block.rest && (
           <span className="muted" style={{ fontSize: "0.72rem" }}>{block.rest}</span>
         )}

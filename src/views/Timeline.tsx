@@ -83,6 +83,12 @@ export function Timeline({
   );
 }
 
+/** Inclusive day count of a span, from two `YYYY-MM-DD` strings. */
+function spanDays(from: string, to: string): number {
+  const ms = Date.parse(`${to}T00:00:00`) - Date.parse(`${from}T00:00:00`);
+  return Math.max(1, Math.round(ms / 86_400_000) + 1);
+}
+
 function TimelineCard({
   ev,
   onOpen,
@@ -108,6 +114,13 @@ function TimelineCard({
         {MEDIUM_LABEL[entry.medium]}
         {typeof entry.rating === "number" ? ` · ★${fmtRating(entry.rating)}` : ""}
       </div>
+      {/* A block that ran over days sits on the day it ended; say where it
+          started, or the row reads as a one-sitting watch it wasn't. */}
+      {ev.from && (
+        <div className="tl-card__span" title={`${ev.from} → ${ev.date}`}>
+          over {spanDays(ev.from, ev.date)} days
+        </div>
+      )}
     </div>
   );
 }

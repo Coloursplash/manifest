@@ -246,3 +246,94 @@ describe("trash", () => {
     expect(onDeleted).not.toHaveBeenCalled();
   });
 });
+
+// The whole point: a film is a sitting, a book or a season is a stretch. The
+// log editor has to ask the right question per medium.
+describe("logging something you got through over time", () => {
+  it("asks a film for one date", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "film" });
+    await user.click(screen.getByRole("button", { name: /Log a watch/ }));
+
+    expect(screen.getByLabelText("Date")).toBeInTheDocument();
+    expect(screen.queryByLabelText("From")).not.toBeInTheDocument();
+  });
+
+  it("asks a book for a From → To stretch", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "book" });
+    await user.click(screen.getByRole("button", { name: /Log a read/ }));
+
+    expect(screen.getByLabelText("From")).toBeInTheDocument();
+    expect(screen.getByLabelText("To")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Date")).not.toBeInTheDocument();
+  });
+
+  it("writes the span chronologically and fills the entry's own dates", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "book" });
+    await user.click(screen.getByRole("button", { name: /Log a read/ }));
+
+    await user.clear(screen.getByLabelText("From"));
+    await user.type(screen.getByLabelText("From"), "2026-03-01");
+    await user.clear(screen.getByLabelText("To"));
+    await user.type(screen.getByLabelText("To"), "2026-03-19");
+    await user.click(screen.getByRole("button", { name: "Just read it" }));
+
+    // date = start, end = finish — the block reads 2026-03-01..2026-03-19.
+    const [, date, , , end] = (appendNote as any).mock.calls[0];
+    expect(date).toBe("2026-03-01");
+    expect(end).toBe("2026-03-19");
+    // …and the dates you typed become the entry's own, since it had none.
+    expect(patchEntry).toHaveBeenCalledWith(base.id, {
+      started: "2026-03-01",
+      finished: "2026-03-19",
+    });
+  });
+
+  it("logs a single day when Started is left blank", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "book" });
+    await user.click(screen.getByRole("button", { name: /Log a read/ }));
+    await user.click(screen.getByRole("button", { name: "Just read it" }));
+
+    const [, date, , , end] = (appendNote as any).mock.calls[0];
+    expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(end).toBeUndefined();
+    // Only `finished` — there's no start to record.
+    expect(patchEntry).toHaveBeenCalledWith(base.id, { finished: date });
+  });
+
+  it("never overwrites dates the entry already has (a reread)", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "book", started: "2024-01-01", finished: "2024-02-01" });
+    await user.click(screen.getByRole("button", { name: /Log a read/ }));
+
+    await user.clear(screen.getByLabelText("From"));
+    await user.type(screen.getByLabelText("From"), "2026-03-01");
+    await user.click(screen.getByRole("button", { name: "Just read it" }));
+
+    expect(appendNote).toHaveBeenCalledOnce();
+    expect(patchEntry).not.toHaveBeenCalled();
+  });
+
+  it("leaves a film's dates alone — it has nowhere to show them", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "film" });
+    await user.click(screen.getByRole("button", { name: /Log a watch/ }));
+    await user.click(screen.getByRole("button", { name: "Just watched it" }));
+
+    expect(appendNote).toHaveBeenCalledOnce();
+    expect(patchEntry).not.toHaveBeenCalled();
+  });
+
+  it("shows an existing span on the block, and re-opens it in both fields", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "book", notes: "2026-03-01..2026-03-19\nSlowly." });
+
+    expect(screen.getByText("2026-03-01 → 2026-03-19")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("From")).toHaveValue("2026-03-01");
+    expect(screen.getByLabelText("To")).toHaveValue("2026-03-19");
+  });
+});

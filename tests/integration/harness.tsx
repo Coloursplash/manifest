@@ -77,7 +77,8 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
       case "append_note": {
         const e = entries.get(id)!;
         const tags = (args.tags as string[]) ?? [];
-        const header = tags.length ? `${args.date} ${tags.map((t) => `#${t}`).join(" ")}` : `${args.date}`;
+        const span = args.end ? `${args.date}..${args.end}` : `${args.date}`;
+        const header = tags.length ? `${span} ${tags.map((t) => `#${t}`).join(" ")}` : span;
         const block = args.body ? `${header}\n${args.body}` : header;
         const next: Entry = { ...e, notes: e.notes ? `${block}\n\n${e.notes}` : block };
         entries.set(id, next);

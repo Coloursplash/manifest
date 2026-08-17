@@ -101,8 +101,8 @@ pub fn load_one(root: &Path, id: &str) -> Result<Entry> {
 }
 
 fn read_doc(path: &Path) -> Result<DocumentMut> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     text.parse::<DocumentMut>()
         .with_context(|| format!("parsing {}", path.display()))
 }
@@ -171,8 +171,20 @@ fn entry_from_doc(medium: Medium, slug: &str, doc: &DocumentMut) -> Entry {
 
 /// Build one note block: a `YYYY-MM-DD` header with any `tags` as `#tag`, and
 /// an optional body. Empty body → a bare dated line ("watched it").
-fn build_block(date: &str, tags: &[String], body: &str) -> String {
+///
+/// `end` makes the header a span, `START..END` — you read a book over three
+/// weeks, you don't read it on a date. Only film and music are genuinely
+/// single-sitting; everything else may want one. `..` is written because it's
+/// trivial to hand-type, but the frontend parser also accepts →, –, — and "to".
+fn build_block(date: &str, end: Option<&str>, tags: &[String], body: &str) -> String {
     let mut header = date.trim().to_string();
+    if let Some(end) = end
+        .map(str::trim)
+        .filter(|e| !e.is_empty() && *e != date.trim())
+    {
+        header.push_str("..");
+        header.push_str(end);
+    }
     for tag in tags {
         let t = tag.trim().trim_start_matches('#');
         if !t.is_empty() {
@@ -220,12 +232,19 @@ fn write_blocks(doc: &mut DocumentMut, blocks: &[String]) {
 }
 
 /// Append a new dated block to an entry's `notes`, preserving everything else.
-pub fn append_note(root: &Path, id: &str, date: &str, tags: &[String], body: &str) -> Result<Entry> {
+pub fn append_note(
+    root: &Path,
+    id: &str,
+    date: &str,
+    end: Option<&str>,
+    tags: &[String],
+    body: &str,
+) -> Result<Entry> {
     let (medium, slug) = parse_id(id)?;
     let path = entry_path(root, medium, &slug);
     let mut doc = read_doc(&path)?;
 
-    let block = build_block(date, tags, body);
+    let block = build_block(date, end, tags, body);
     let existing = doc.get("notes").and_then(|i| i.as_str()).unwrap_or("");
     let updated = if existing.trim().is_empty() {
         format!("{block}\n")
@@ -245,6 +264,7 @@ pub fn edit_note(
     id: &str,
     index: usize,
     date: &str,
+    end: Option<&str>,
     tags: &[String],
     body: &str,
 ) -> Result<Entry> {
@@ -256,7 +276,7 @@ pub fn edit_note(
     if index >= blocks.len() {
         return Err(anyhow!("note {index} does not exist"));
     }
-    blocks[index] = build_block(date, tags, body);
+    blocks[index] = build_block(date, end, tags, body);
     write_blocks(&mut doc, &blocks);
     write_doc(&path, &doc)?;
     Ok(entry_from_doc(medium, &slug, &doc))
@@ -396,8 +416,7 @@ pub fn trash_entry(root: &Path, id: &str) -> Result<()> {
     let trash = root.join(".trash").join(medium.dir());
     std::fs::create_dir_all(&trash).context("creating trash folder")?;
     let dest = trash.join(format!("{slug}.toml"));
-    std::fs::rename(&path, &dest)
-        .with_context(|| format!("moving {} to trash", path.display()))?;
+    std::fs::rename(&path, &dest).with_context(|| format!("moving {} to trash", path.display()))?;
     Ok(())
 }
 
@@ -405,8 +424,7 @@ fn write_doc(path: &Path, doc: &DocumentMut) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    std::fs::write(path, doc.to_string())
-        .with_context(|| format!("writing {}", path.display()))
+    std::fs::write(path, doc.to_string()).with_context(|| format!("writing {}", path.display()))
 }
 
 // --- TOML <-> JSON bridging for the `extra` bag and create payloads ---
@@ -532,6 +550,7 @@ Deliberate pacing.
             &dir,
             "film/br2049",
             "2026-07-09",
+            None,
             &["rewatch".to_string()],
             "Sound design stands out.",
         )
@@ -580,7 +599,8 @@ Deliberate pacing.
         let updated = set_status(&dir, "film/dune-part-two", Some(Status::Done)).unwrap();
         assert_eq!(updated.status, Some(Status::Done));
 
-        let text = std::fs::read_to_string(entry_path(&dir, Medium::Film, "dune-part-two")).unwrap();
+        let text =
+            std::fs::read_to_string(entry_path(&dir, Medium::Film, "dune-part-two")).unwrap();
         assert!(text.contains("director = \"Denis Villeneuve\""));
         assert!(text.contains("status = \"done\""));
 

@@ -37,11 +37,10 @@ async fn choose_library_folder(app: AppHandle) -> Result<Option<String>, String>
     // Offload the blocking picker to a worker thread; the main thread stays
     // free to drive the dialog.
     let picker = app.clone();
-    let folder = tauri::async_runtime::spawn_blocking(move || {
-        picker.dialog().file().blocking_pick_folder()
-    })
-    .await
-    .map_err(err)?;
+    let folder =
+        tauri::async_runtime::spawn_blocking(move || picker.dialog().file().blocking_pick_folder())
+            .await
+            .map_err(err)?;
 
     let Some(folder) = folder else {
         return Ok(None);
@@ -74,16 +73,19 @@ fn get_entry(state: State<AppState>, id: String) -> Result<Entry, String> {
 
 /// Append a dated block to an entry's notes ("log a watch/read"). `tags` become
 /// `#tag`s on the header line; `body` may be empty (just log the date + tags).
+/// `end` turns the header into a `START..END` span, for the media you get
+/// through over days or weeks rather than in one sitting.
 #[tauri::command]
 fn append_note(
     state: State<AppState>,
     id: String,
     date: String,
+    end: Option<String>,
     tags: Vec<String>,
     body: String,
 ) -> Result<Entry, String> {
     let root = state.library_root().map_err(err)?;
-    store::append_note(&root, &id, &date, &tags, &body).map_err(err)
+    store::append_note(&root, &id, &date, end.as_deref(), &tags, &body).map_err(err)
 }
 
 /// Replace an existing note block (by index) with edited content.
@@ -93,11 +95,12 @@ fn update_note(
     id: String,
     index: usize,
     date: String,
+    end: Option<String>,
     tags: Vec<String>,
     body: String,
 ) -> Result<Entry, String> {
     let root = state.library_root().map_err(err)?;
-    store::edit_note(&root, &id, index, &date, &tags, &body).map_err(err)
+    store::edit_note(&root, &id, index, &date, end.as_deref(), &tags, &body).map_err(err)
 }
 
 /// Delete a note block by index.
@@ -121,14 +124,13 @@ fn patch_entry(
 
 /// Set or clear an entry's status. `status: None` clears it.
 #[tauri::command]
-fn set_status(
-    state: State<AppState>,
-    id: String,
-    status: Option<String>,
-) -> Result<Entry, String> {
+fn set_status(state: State<AppState>, id: String, status: Option<String>) -> Result<Entry, String> {
     let root = state.library_root().map_err(err)?;
     let parsed = match status {
-        Some(s) => Some(s.parse::<Status>().map_err(|_| format!("unknown status: {s}"))?),
+        Some(s) => Some(
+            s.parse::<Status>()
+                .map_err(|_| format!("unknown status: {s}"))?,
+        ),
         None => None,
     };
     store::set_status(&root, &id, parsed).map_err(err)
@@ -159,7 +161,10 @@ fn create_entry(state: State<AppState>, payload: CreatePayload) -> Result<Entry,
         .parse()
         .map_err(|_| format!("unknown medium: {}", payload.medium))?;
     let status = match payload.status {
-        Some(s) => Some(s.parse::<Status>().map_err(|_| format!("unknown status: {s}"))?),
+        Some(s) => Some(
+            s.parse::<Status>()
+                .map_err(|_| format!("unknown status: {s}"))?,
+        ),
         None => None,
     };
     store::create_entry(
@@ -242,7 +247,11 @@ fn has_tmdb_key(app: AppHandle) -> bool {
 fn set_tmdb_key(app: AppHandle, key: String) -> Result<(), String> {
     let trimmed = key.trim().to_string();
     state::update_config(&app, |cfg| {
-        cfg.tmdb_api_key = if trimmed.is_empty() { None } else { Some(trimmed) };
+        cfg.tmdb_api_key = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        };
     })
     .map_err(err)
 }
@@ -259,7 +268,11 @@ fn has_rawg_key(app: AppHandle) -> bool {
 fn set_rawg_key(app: AppHandle, key: String) -> Result<(), String> {
     let trimmed = key.trim().to_string();
     state::update_config(&app, |cfg| {
-        cfg.rawg_api_key = if trimmed.is_empty() { None } else { Some(trimmed) };
+        cfg.rawg_api_key = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        };
     })
     .map_err(err)
 }
