@@ -141,6 +141,11 @@ pub struct Entry {
     pub rating: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Do you own a copy? Only meaningful for media you buy (games, books) —
+    /// the UI uses it to split "backlog" (owned, unplayed) from "wishlist"
+    /// (want it, don't have it). Absent means not owned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owned: Option<bool>,
 
     // --- progress: interpreted per medium by the UI ---
     /// Date started (reading/watching): `YYYY-MM-DD`.
@@ -167,7 +172,7 @@ pub struct Entry {
 
 /// Top-level keys that map onto typed `Entry` fields; everything else falls
 /// through to `extra`.
-pub const KNOWN_KEYS: [&str; 11] = [
-    "title", "year", "cover", "status", "rating", "tags", "started", "finished", "progress",
-    "season", "notes",
+pub const KNOWN_KEYS: [&str; 12] = [
+    "title", "year", "cover", "status", "rating", "tags", "owned", "started", "finished",
+    "progress", "season", "notes",
 ];

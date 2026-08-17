@@ -134,6 +134,66 @@ describe("LibraryGrid", () => {
     expect(onOpen).toHaveBeenCalledWith(entry.id);
   });
 
+  describe("Backlog / Wishlist split", () => {
+    it("splits want entries by ownership for media that track it", () => {
+      render(
+        <LibraryGrid
+          entries={[
+            makeEntry({ title: "Bought It", medium: "game", status: "want", owned: true }),
+            makeEntry({ title: "Want To Buy", medium: "game", status: "want" }),
+          ]}
+          onOpen={vi.fn()}
+          emptyHint=""
+          ownedMedia={["game"]}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /Backlog/ })).toHaveTextContent("1");
+      expect(screen.getByRole("button", { name: /Wishlist/ })).toHaveTextContent("1");
+    });
+
+    it("treats an unmarked entry as unowned → Wishlist", () => {
+      render(
+        <LibraryGrid
+          entries={[makeEntry({ title: "Unmarked", medium: "game", status: "want" })]}
+          onOpen={vi.fn()}
+          emptyHint=""
+          ownedMedia={["game"]}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /Wishlist/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Backlog/ })).not.toBeInTheDocument();
+    });
+
+    it("leaves media that don't track ownership wholly in Backlog", () => {
+      render(
+        <LibraryGrid
+          entries={[
+            makeEntry({ title: "A Film", medium: "film", status: "want" }),
+            makeEntry({ title: "An Album", medium: "music", status: "want", owned: true }),
+          ]}
+          onOpen={vi.fn()}
+          emptyHint=""
+          ownedMedia={["game"]}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /Backlog/ })).toHaveTextContent("2");
+      expect(screen.queryByRole("button", { name: /Wishlist/ })).not.toBeInTheDocument();
+    });
+
+    it("never splits when no medium tracks ownership", () => {
+      render(
+        <LibraryGrid
+          entries={[makeEntry({ title: "Unowned Game", medium: "game", status: "want" })]}
+          onOpen={vi.fn()}
+          emptyHint=""
+          ownedMedia={[]}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /Backlog/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Wishlist/ })).not.toBeInTheDocument();
+    });
+  });
+
   it("restores expanded state from localStorage on mount", () => {
     // force the Done section expanded even though it defaults to a shelf
     localStorage.setItem("manifest-sections", JSON.stringify({ done: true }));

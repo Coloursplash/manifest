@@ -25,7 +25,7 @@ import { patchEntry, appendNote, deleteEntry } from "../lib/api";
 
 let base: Entry;
 
-function renderDetail(overrides: Partial<Entry> = {}) {
+function renderDetail(overrides: Partial<Entry> = {}, showOwned = false) {
   base = makeEntry({ medium: "film", title: "Blade Runner 2049", ...overrides });
   const onChanged = vi.fn();
   const onDeleted = vi.fn();
@@ -36,6 +36,7 @@ function renderDetail(overrides: Partial<Entry> = {}) {
       onBack={onBack}
       onChanged={onChanged}
       onDeleted={onDeleted}
+      showOwned={showOwned}
     />,
   );
   return { onChanged, onDeleted, onBack };
@@ -63,6 +64,36 @@ describe("status chips", () => {
     await user.click(screen.getByRole("button", { name: /Watching/ }));
 
     expect(patchEntry).toHaveBeenCalledWith(base.id, { status: null });
+  });
+});
+
+describe("owned toggle", () => {
+  it("is hidden for media that don't track ownership", () => {
+    renderDetail({ medium: "film", status: "want" });
+    expect(screen.queryByRole("button", { name: /Owned/ })).not.toBeInTheDocument();
+  });
+
+  it("marks an unowned entry as owned", async () => {
+    const user = userEvent.setup();
+    const { onChanged } = renderDetail({ medium: "game", status: "want" }, true);
+
+    const toggle = screen.getByRole("button", { name: /Owned/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(toggle);
+
+    expect(patchEntry).toHaveBeenCalledWith(base.id, { owned: true });
+    expect(onChanged).toHaveBeenCalledOnce();
+  });
+
+  it("clears the key rather than writing owned = false when toggled off", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "game", status: "want", owned: true }, true);
+
+    const toggle = screen.getByRole("button", { name: /Owned/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await user.click(toggle);
+
+    expect(patchEntry).toHaveBeenCalledWith(base.id, { owned: null });
   });
 });
 

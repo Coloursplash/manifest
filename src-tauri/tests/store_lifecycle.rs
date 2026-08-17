@@ -201,3 +201,75 @@ fn bad_ids_and_missing_entries_error_cleanly() {
     assert!(load_one(root, "film/does-not-exist").is_err());
     assert!(store::parse_id("film/").is_err());
 }
+
+#[test]
+fn owned_round_trips_as_a_typed_bool_and_clears_to_absent() {
+    let lib = TempLib::new();
+    let root = &lib.root;
+
+    create_entry(
+        root,
+        NewEntry {
+            medium: Medium::Game,
+            title: "Outer Wilds".into(),
+            year: Some(2019),
+            cover: None,
+            status: Some(Status::Want),
+            fields: serde_json::Map::new(),
+            notes: None,
+        },
+    )
+    .unwrap();
+    let path = entry_path(root, Medium::Game, "outer-wilds");
+
+    // Absent by default — an entry you never marked isn't owned.
+    assert_eq!(load_one(root, "game/outer-wilds").unwrap().owned, None);
+
+    // Marking it writes a real TOML boolean, not a string.
+    let mut patch = serde_json::Map::new();
+    patch.insert("owned".into(), json!(true));
+    let entry = patch_entry(root, "game/outer-wilds", &patch).unwrap();
+    assert_eq!(entry.owned, Some(true));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("owned = true"), "got: {text}");
+    // It's a typed field, so it must not also leak into the `extra` bag.
+    assert!(!entry.extra.contains_key("owned"));
+
+    // Unmarking removes the key rather than leaving `owned = false` behind.
+    let mut patch = serde_json::Map::new();
+    patch.insert("owned".into(), serde_json::Value::Null);
+    let entry = patch_entry(root, "game/outer-wilds", &patch).unwrap();
+    assert_eq!(entry.owned, None);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("owned"), "got: {text}");
+}
+
+#[test]
+fn a_hand_written_non_boolean_owned_reads_as_not_owned() {
+    let lib = TempLib::new();
+    let root = &lib.root;
+
+    create_entry(
+        root,
+        NewEntry {
+            medium: Medium::Book,
+            title: "Piranesi".into(),
+            year: None,
+            cover: None,
+            status: Some(Status::Want),
+            fields: serde_json::Map::new(),
+            notes: None,
+        },
+    )
+    .unwrap();
+
+    // Someone edits the file by hand and writes a string. We refuse to coerce
+    // it, but we also must not drop it — the key is theirs.
+    let path = entry_path(root, Medium::Book, "piranesi");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{text}owned = \"yes\"\n")).unwrap();
+
+    let entry = load_one(root, "book/piranesi").unwrap();
+    assert_eq!(entry.owned, None, "a string is not a boolean");
+    assert!(std::fs::read_to_string(&path).unwrap().contains("owned = \"yes\""));
+}

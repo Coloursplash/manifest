@@ -61,7 +61,8 @@ The exact schema (shared fields + per-medium fields + status/list fields) is def
 - **Watch/read lists & status** — want-to / in-progress / finished, per entry, stored in
   the file itself.
 - **Browse & visualise** the library two ways: a grid/shelf view (grouped by status —
-  in-progress / watchlist / done) and a **timeline/diary** view that scrolls your dated
+  in-progress / backlog / wishlist / done, where backlog vs wishlist is "own it" vs "would
+  have to buy it", for the media you buy) and a **timeline/diary** view that scrolls your dated
   watch/read events by month and year, Letterboxd-style, with per-year summaries.
 - **Sort** the library by name, recently finished, recently released, or your own score.
 - **View & append notes** — especially quick "log a new dated entry" for a rewatch/reread.

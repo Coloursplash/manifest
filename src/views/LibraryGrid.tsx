@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import { Cover } from "../components/Cover";
-import { MEDIA, MEDIUM_LABEL, type Entry, type Status } from "../lib/types";
+import { isOwned } from "../lib/ownership";
+import { MEDIA, MEDIUM_LABEL, type Entry, type Medium, type Status } from "../lib/types";
 
 // Grouped by where a thing sits in your life: what you're on now, what's queued,
 // what's done. Each category shows a single full-width row (a horizontal shelf)
@@ -12,11 +13,23 @@ interface SectionDef {
   label: string;
   statuses: Status[];
   byMedium?: boolean;
+  /** Extra test beyond status, used for the Backlog/Wishlist split. Sections are
+   *  matched in order, so the first one that accepts an entry wins. */
+  accepts?: (e: Entry, tracksOwnership: (m: Medium) => boolean) => boolean;
 }
 
 const SECTIONS: SectionDef[] = [
   { key: "progress", label: "In Progress", statuses: ["active", "paused"], byMedium: true },
-  { key: "watchlist", label: "Backlog", statuses: ["want"] },
+  // "want" splits in two for media that track ownership: things you already have
+  // (Backlog) vs things you'd have to buy (Wishlist). Media that don't track it
+  // land wholesale in Backlog, exactly as before.
+  {
+    key: "watchlist",
+    label: "Backlog",
+    statuses: ["want"],
+    accepts: (e, tracks) => !tracks(e.medium) || isOwned(e),
+  },
+  { key: "wishlist", label: "Wishlist", statuses: ["want"] },
   { key: "done", label: "Done", statuses: ["done"] },
   { key: "dropped", label: "Dropped", statuses: ["dropped"] },
 ];
@@ -42,13 +55,18 @@ export function LibraryGrid({
   entries,
   onOpen,
   emptyHint,
+  ownedMedia = [],
 }: {
   entries: Entry[];
   onOpen: (id: string) => void;
   emptyHint: string;
+  /** Media that track ownership; their "want" entries split into Backlog
+   *  (owned) and Wishlist (not). Empty = no split anywhere. */
+  ownedMedia?: Medium[];
 }) {
   // Every category defaults to the shelf (preview); expanding is opt-in.
   const [open, setOpen] = useState<Record<string, boolean>>(loadOpen);
+  const tracksOwnership = (m: Medium) => ownedMedia.includes(m);
 
   if (entries.length === 0) {
     return (
@@ -62,7 +80,11 @@ export function LibraryGrid({
   const buckets = new Map<string, Entry[]>();
   for (const e of entries) {
     const def = e.status
-      ? SECTIONS.find((s) => s.statuses.includes(e.status as Status))
+      ? SECTIONS.find(
+          (s) =>
+            s.statuses.includes(e.status as Status) &&
+            (!s.accepts || s.accepts(e, tracksOwnership)),
+        )
       : undefined;
     const key = def ? def.key : UNSORTED.key;
     const list = buckets.get(key);

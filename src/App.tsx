@@ -25,6 +25,7 @@ import {
   saveEnabledMedia,
   saveMediaOrder,
 } from "./lib/media";
+import { getOwnedMedia, toggleOwnedMedium } from "./lib/ownership";
 import { getLayout, setLayout, type Layout } from "./lib/layout";
 import { getSort, setSort, sortEntries, SORT_KEYS, SORT_LABEL, type SortKey } from "./lib/sort";
 import { buildTimeline } from "./lib/timeline";
@@ -77,6 +78,7 @@ export default function App() {
   const [accent, setAccent] = useState<string>(getAccent());
   const [enabledMedia, setEnabledMedia] = useState<Medium[]>(getEnabledMedia());
   const [mediaOrder, setMediaOrder] = useState<Medium[]>(getMediaOrder());
+  const [ownedMedia, setOwnedMedia] = useState<Medium[]>(getOwnedMedia());
   const omniRef = useRef<OmniBoxHandle>(null);
 
   function changeTheme(t: Theme) {
@@ -112,6 +114,10 @@ export default function App() {
     setEnabledMedia(saveEnabledMedia(nextSet));
     // If we just hid the medium currently filtered, fall back to All.
     if (on && filterMedium === m) setFilterMedium(null);
+  }
+  // Whether a medium splits Backlog/Wishlist and shows the Owned toggle.
+  function toggleOwned(m: Medium) {
+    setOwnedMedia(toggleOwnedMedium(m));
   }
   // Reordering the categories also reorders the enabled subset, so take both.
   function reorderMedia(order: Medium[]) {
@@ -506,6 +512,7 @@ export default function App() {
             entry={selected}
             onBack={() => setView({ kind: "grid" })}
             onChanged={upsert}
+            showOwned={ownedMedia.includes(selected.medium)}
             onDeleted={() => {
               setEntries((prev) => prev.filter((e) => e.id !== selected.id));
               setView({ kind: "grid" });
@@ -526,6 +533,7 @@ export default function App() {
         ) : (
           <LibraryGrid
             entries={sorted}
+            ownedMedia={ownedMedia}
             onOpen={(id) => setView({ kind: "detail", id })}
             emptyHint={
               entries.length === 0
@@ -553,6 +561,8 @@ export default function App() {
           enabledMedia={enabledMedia}
           onToggleMedium={toggleMedium}
           onReorderMedia={reorderMedia}
+          ownedMedia={ownedMedia}
+          onToggleOwnedMedium={toggleOwned}
           onRefreshAll={refreshAllMetadata}
           hasKey={hasKey}
           onKeyChanged={() => hasTmdbKey().then(setHasKey)}

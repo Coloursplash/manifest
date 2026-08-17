@@ -5,7 +5,7 @@ import { MediaChooser } from "../components/MediaChooser";
 import { setRawgKey, setTmdbKey } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
 import { basename, type Library } from "../lib/libraries";
-import { type Medium } from "../lib/types";
+import { MEDIUM_LABEL, type Medium } from "../lib/types";
 import type { Theme } from "../lib/theme";
 
 export function SettingsModal({
@@ -23,6 +23,8 @@ export function SettingsModal({
   enabledMedia,
   onToggleMedium,
   onReorderMedia,
+  ownedMedia,
+  onToggleOwnedMedium,
   onRefreshAll,
   hasKey,
   onKeyChanged,
@@ -50,6 +52,9 @@ export function SettingsModal({
   enabledMedia: Medium[];
   onToggleMedium: (m: Medium) => void;
   onReorderMedia: (order: Medium[]) => void;
+  /** Media that track ownership (Backlog vs Wishlist). */
+  ownedMedia: Medium[];
+  onToggleOwnedMedium: (m: Medium) => void;
   onRefreshAll: (
     onProgress?: (done: number, total: number) => void,
   ) => Promise<{ updated: number; failed: number; total: number }>;
@@ -190,6 +195,30 @@ export function SettingsModal({
             onReorder={onReorderMedia}
             onToggle={onToggleMedium}
           />
+        </div>
+
+        {/* Ownership */}
+        <div className="section">
+          <div className="section__label">Ownership</div>
+          <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
+            For media you buy a copy of, the Backlog splits in two: things you own
+            but haven't started, and a <strong>Wishlist</strong> of things you'd
+            have to buy first. Entries in these categories get an{" "}
+            <strong>Owned</strong> toggle. Off for everything else — it makes
+            little sense for anything you stream.
+          </p>
+          <div className="tabs">
+            {enabledMedia.map((m) => (
+              <button
+                key={m}
+                className={`chip ${ownedMedia.includes(m) ? "chip--on" : ""}`}
+                onClick={() => onToggleOwnedMedium(m)}
+                aria-pressed={ownedMedia.includes(m)}
+              >
+                {MEDIUM_LABEL[m]}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Library metadata */}

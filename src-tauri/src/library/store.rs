@@ -122,6 +122,9 @@ fn entry_from_doc(medium: Medium, slug: &str, doc: &DocumentMut) -> Entry {
     let rating = doc
         .get("rating")
         .and_then(|i| i.as_float().or_else(|| i.as_integer().map(|n| n as f64)));
+    // Typed on purpose: a hand-written `owned = "yes"` is not a boolean, so it
+    // reads as absent (not owned) rather than being silently coerced true.
+    let owned = doc.get("owned").and_then(|i| i.as_bool());
     let started = get_str("started");
     let finished = get_str("finished");
     let progress = doc.get("progress").and_then(|i| i.as_integer());
@@ -156,6 +159,7 @@ fn entry_from_doc(medium: Medium, slug: &str, doc: &DocumentMut) -> Entry {
         status,
         rating,
         tags,
+        owned,
         started,
         finished,
         progress,

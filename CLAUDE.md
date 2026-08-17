@@ -76,6 +76,10 @@ One `.toml` file per entry, grouped by medium under the library folder, e.g.
 - `status` (string) — one of `want`, `active`, `done`, `dropped`, `paused`
 - `rating` (float, optional) — user's own scale, don't impose one
 - `tags` (array of strings, optional)
+- `owned` (bool, optional) — do you have a copy? Absent means no. Only surfaced for
+  media you *buy* (games by default); it splits `want` into **Backlog** (owned) and
+  **Wishlist** (not). Typed on purpose — a hand-written `owned = "yes"` reads as absent
+  rather than being coerced true, and is preserved untouched.
 - `notes` (multiline string) — the dated log; **treat as sacred, never reformat**
 
 **Progress fields (typed, optional; interpreted per medium by the UI):**
@@ -371,9 +375,26 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     (`.omni__panel--add`, `.addpanel*`). Tests: OmniBox add-mode entry (appended row + clears
     filter) + `addMode()` ref. 123 frontend tests; build clean.
 
-Known: user has reported bugs in the new views to be triaged. Idea on the table: a "wishlist"
-concept distinct from backlog, gated on adding an `owned` tag for games/books (they're not
-subscription media) — not built yet.
+- **Wishlist split (`owned`) done.** Backlog now means *own it, haven't started it*; a new
+  **Wishlist** section holds `want` entries you'd have to buy first. Backend: `owned:
+  Option<bool>` is a typed shared field (`schema.rs`, `KNOWN_KEYS` 11→12, read in
+  `entry_from_doc`) — `patch_entry` already bridged JSON bools, so no write-path change.
+  Frontend: `lib/ownership.ts` persists *which media track ownership*
+  (`manifest-owned-media`, default `["game"]`; an empty saved array is a real choice, only a
+  malformed save falls back) plus `isOwned` (only an explicit `true` counts).
+  `LibraryGrid` gains an optional `ownedMedia` prop and a per-section `accepts` predicate —
+  sections match in order, so Backlog claims `!tracks(medium) || isOwned(e)` and Wishlist
+  takes the rest of `want`; media that don't track ownership behave exactly as before.
+  `EntryDetail` shows an `✓ Owned` chip on its own row (gated by a `showOwned` prop) that
+  patches `{owned: true}` / `{owned: null}` — **toggling off removes the key** rather than
+  writing `owned = false`. Settings has an "Ownership" section (chips over `enabledMedia`).
+  The game `want` verb changed **"Backlog" → "Want to play"** so the status chip no longer
+  collides with the section name. An unmarked `want` entry counts as unowned → Wishlist.
+  Tests: `lib/ownership.test.ts` (9), grid split (4), the Owned toggle (3), and two backend
+  round-trips in `store_lifecycle.rs` (typed bool on disk / clears to absent; a hand-written
+  `owned = "yes"` reads as not-owned and survives). 149 frontend + 14 backend tests.
+
+Known: user has reported bugs in the new views to be triaged.
 
 v1 core loop complete. Next: import from other trackers, custom media types, more frontend
 tests (component/view level).

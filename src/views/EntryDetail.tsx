@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Cover } from "../components/Cover";
-import { IconBack, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
+import { IconBack, IconCheck, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
 import {
   appendNote,
   deleteEntry,
@@ -27,11 +27,14 @@ export function EntryDetail({
   onBack,
   onChanged,
   onDeleted,
+  showOwned = false,
 }: {
   entry: Entry;
   onBack: () => void;
   onChanged: (e: Entry) => void;
   onDeleted: () => void;
+  /** Show the Owned toggle — on for media that track ownership (Settings). */
+  showOwned?: boolean;
 }) {
   const shape = PROGRESS[entry.medium];
   const totalKey = shape.totalKey;
@@ -65,6 +68,13 @@ export function EntryDetail({
 
   async function chooseStatus(s: Status) {
     await patch({ status: entry.status === s ? null : s });
+  }
+
+  // Turning ownership off *removes* the key rather than writing `owned = false`
+  // — absent already means "not owned", and we'd rather not leave dead keys in
+  // the user's file.
+  async function toggleOwned() {
+    await patch({ owned: entry.owned === true ? null : true });
   }
 
   async function remove() {
@@ -143,6 +153,26 @@ export function EntryDetail({
               </button>
             ))}
           </div>
+
+          {/* ownership — only for media you buy a copy of. Sits on its own row
+              so a boolean never reads as a sixth (exclusive) status. */}
+          {showOwned && (
+            <div className="tabs" style={{ marginBottom: 14 }}>
+              <button
+                className={`chip ${entry.owned ? "chip--on" : ""}`}
+                onClick={toggleOwned}
+                disabled={busy}
+                aria-pressed={entry.owned === true}
+                title={
+                  entry.owned
+                    ? "You own this — it sits in your Backlog"
+                    : "Mark as owned (unowned wants sit in your Wishlist)"
+                }
+              >
+                <IconCheck size={13} /> Owned
+              </button>
+            </div>
+          )}
 
           {/* rating: 5 half-fillable circles = /10 */}
           <RatingCircles value={entry.rating} onSet={(n) => patch({ rating: n })} />

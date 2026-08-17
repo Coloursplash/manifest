@@ -25,7 +25,9 @@ const STATUS_VERB: Record<Medium, Record<Status, string>> = {
   anime: { want: "Plan to watch", active: "Watching", done: "Watched", dropped: "Dropped", paused: "On hold" },
   book: { want: "Plan to read", active: "Reading", done: "Read", dropped: "Dropped", paused: "On hold" },
   manga: { want: "Plan to read", active: "Reading", done: "Read", dropped: "Dropped", paused: "On hold" },
-  game: { want: "Backlog", active: "Playing", done: "Beaten", dropped: "Dropped", paused: "On hold" },
+  // "Want to play" rather than "Backlog": Backlog is now a *section* (want +
+  // owned) that Wishlist (want, unowned) splits off from — see lib/ownership.
+  game: { want: "Want to play", active: "Playing", done: "Beaten", dropped: "Dropped", paused: "On hold" },
   music: { want: "Want to hear", active: "Listening", done: "Listened", dropped: "Dropped", paused: "On hold" },
 };
 
@@ -90,6 +92,9 @@ export interface Entry {
   status?: Status;
   rating?: number;
   tags?: string[];
+  /** Own a copy? Absent = not owned. Splits Backlog from Wishlist for the media
+   *  you buy — see lib/ownership.ts for which media surface it. */
+  owned?: boolean;
   started?: string; // YYYY-MM-DD
   finished?: string; // YYYY-MM-DD
   progress?: number; // page / episode / chapter
