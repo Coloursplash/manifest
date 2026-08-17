@@ -2,15 +2,8 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { Cover } from "../components/Cover";
 import { IconBack, IconClose, IconSearch } from "../components/icons";
-import {
-  appendNote,
-  createEntry,
-  fetchDetails,
-  patchEntry,
-  searchMetadata,
-} from "../lib/api";
+import { createEntry, fetchDetails, searchMetadata } from "../lib/api";
 import { formatValue, humanizeLabel } from "../lib/fields";
-import { todayISO } from "../lib/notes";
 import {
   MEDIUM_LABEL,
   statusLabel,
@@ -23,19 +16,16 @@ import {
 const quickLabel = (m: Medium, s: Status) =>
   s === "want" ? "Plan" : statusLabel(m, s);
 
-/** Adding as "done" logs today's date and sets a finish date; "active" sets a
- *  start date. So clicking "Read" both files it and logs it in one go. */
-async function finalize(entry: Entry, status: Status): Promise<Entry> {
-  const today = todayISO();
-  if (status === "done") {
-    await patchEntry(entry.id, { finished: today });
-    return appendNote(entry.id, today, [], "");
-  }
-  if (status === "active") {
-    return patchEntry(entry.id, { started: today });
-  }
-  return entry;
-}
+// Adding files an entry under a status and nothing else.
+//
+// It used to also stamp today's date — `finished` + a bare log block for
+// "done", `started` for "active" — on the theory that you add things right
+// after watching them. That guess was wrong often enough to be a bug: adding a
+// film you saw in May logged it as seen today, and the invented `finished` date
+// then showed up as a second, phantom row on the timeline (films are
+// single-sitting, so `finished` has no field in the UI — you couldn't even see
+// what had been written). Dates are the user's to choose: the log editor on the
+// entry page is where they get picked.
 
 export function AddEntryModal({
   hasKey,
@@ -175,7 +165,7 @@ export function AddEntryModal({
         status,
         fields,
       });
-      onCreated(await finalize(created, status));
+      onCreated(created);
       setAdded((a) => ({ ...a, [key]: status }));
     } catch (e) {
       setError(String(e));
@@ -187,7 +177,7 @@ export function AddEntryModal({
     setError(null);
     try {
       const created = await createEntry({ medium, title: query.trim(), status });
-      onCreated(await finalize(created, status));
+      onCreated(created);
       setAdded((a) => ({ ...a, [`manual:${query.trim()}`]: status }));
     } catch (e) {
       setError(String(e));

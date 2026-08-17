@@ -97,6 +97,35 @@ describe("owned toggle", () => {
   });
 });
 
+describe("stray dates on single-sitting media", () => {
+  it("shows nothing when a film has no dates", () => {
+    renderDetail({ medium: "film" });
+    expect(screen.queryByText("Dates")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Finished")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a finished date a film shouldn't have, and clears it", async () => {
+    const user = userEvent.setup();
+    // Films have no Progress section, so this key used to be invisible in the
+    // UI while still putting a row on the timeline.
+    renderDetail({ medium: "film", status: "done", finished: "2026-07-30" });
+
+    expect(screen.getByText("Dates")).toBeInTheDocument();
+    expect(screen.getByLabelText("Finished")).toHaveValue("2026-07-30");
+
+    await user.click(screen.getByRole("button", { name: "Clear Finished" }));
+    expect(patchEntry).toHaveBeenCalledWith(base.id, { finished: null });
+  });
+
+  it("offers a clear button on dated progress fields too", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "book", started: "2026-03-01" });
+
+    await user.click(screen.getByRole("button", { name: "Clear Started" }));
+    expect(patchEntry).toHaveBeenCalledWith(base.id, { started: null });
+  });
+});
+
 describe("rating", () => {
   it("clicking a rating circle patches a numeric rating", async () => {
     const user = userEvent.setup();

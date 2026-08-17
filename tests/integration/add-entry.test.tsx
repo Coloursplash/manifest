@@ -34,9 +34,13 @@ describe("add-entry flow", () => {
     expect(created.title).toBe("Arrival");
     expect(created.status).toBe("done");
 
-    // ...and "done" also logged today's date + a finished date (finalize()).
-    expect(backend.callsTo("append_note").some((a) => a.id === "film/arrival")).toBe(true);
-    expect(backend.callsTo("patch_entry").some((a) => a.id === "film/arrival" && "finished" in (a.patch as object))).toBe(true);
+    // ...and that's *all* it did. Adding as "Watched" must not invent dates on
+    // your behalf: no log block for today, no `finished`. Picking when you saw
+    // it is the log editor's job — a guessed date is a phantom timeline row.
+    expect(backend.callsTo("append_note").some((a) => a.id === "film/arrival")).toBe(false);
+    expect(backend.callsTo("patch_entry").some((a) => a.id === "film/arrival")).toBe(false);
+    expect(created.finished).toBeUndefined();
+    expect(created.notes).toBeUndefined();
   });
 
   it("gates the film provider behind a TMDB key and offers a manual add", async () => {

@@ -209,6 +209,39 @@ export function EntryDetail({
             </div>
           )}
 
+          {/* Single-sitting media (a film, an album) have no progress to track —
+              the dated log block *is* the record. But if a started/finished key
+              exists on disk anyway (hand-added, or stamped by the old add flow)
+              we have to show it: it puts a row on the timeline, so it must not
+              be invisible here. Only rendered when there's something to see. */}
+          {shape.single && (entry.started || entry.finished) && (
+            <div className="section">
+              <div className="section__label">Dates</div>
+              <div className="row wrap">
+                {entry.started && (
+                  <DateField
+                    label="Started"
+                    value={entry.started}
+                    onCommit={(v) => patch({ started: v })}
+                  />
+                )}
+                {entry.finished && (
+                  <DateField
+                    label="Finished"
+                    value={entry.finished}
+                    onCommit={(v) => patch({ finished: v })}
+                  />
+                )}
+              </div>
+              <p className="muted" style={{ fontSize: "0.75rem", marginTop: 8 }}>
+                A {MEDIUM_LABEL[entry.medium].toLowerCase().replace(/s$/, "")} is
+                logged by its dated entries below — this date is extra, and shows
+                as its own row on the timeline. Clear it if that's not what you
+                want.
+              </p>
+            </div>
+          )}
+
           {/* progress */}
           {!shape.single && (
             <div className="section">
@@ -576,6 +609,9 @@ function NoteEditor({
 
 // --- small commit-on-change field helpers ---
 
+/** A date + an explicit clear. The × matters: emptying a native date input isn't
+ *  reliably possible in the webview, and a wrong date here is not cosmetic — it
+ *  puts a row on the timeline. */
 function DateField({
   label,
   value,
@@ -586,16 +622,29 @@ function DateField({
   onCommit: (v: string | null) => void;
 }) {
   return (
-    <label className="stack" style={{ gap: 4 }}>
+    <div className="stack" style={{ gap: 4 }}>
       <span className="label">{label}</span>
-      <input
-        className="input"
-        style={{ width: 150 }}
-        type="date"
-        value={value ?? ""}
-        onChange={(e) => onCommit(e.target.value || null)}
-      />
-    </label>
+      <div className="row" style={{ gap: 4 }}>
+        <input
+          className="input"
+          style={{ width: 150 }}
+          type="date"
+          value={value ?? ""}
+          aria-label={label}
+          onChange={(e) => onCommit(e.target.value || null)}
+        />
+        {value && (
+          <button
+            className="btn btn--ghost btn--icon-sm btn--dim"
+            onClick={() => onCommit(null)}
+            title={`Clear ${label.toLowerCase()} date`}
+            aria-label={`Clear ${label}`}
+          >
+            <IconClose size={15} />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

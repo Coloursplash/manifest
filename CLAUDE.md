@@ -394,6 +394,18 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
   round-trips in `store_lifecycle.rs` (typed bool on disk / clears to absent; a hand-written
   `owned = "yes"` reads as not-owned and survives). 149 frontend + 14 backend tests.
 
+- **Adding never invents a date (bugfix).** `AddEntryModal`'s `finalize()` used to stamp
+  today onto a new entry — `finished` + a bare log block for `done`, `started` for `active`
+  — assuming you add things right after watching them. Wrong often enough to be a bug: a
+  film seen in May got logged as seen today, and since films are single-sitting (`PROGRESS
+  .single`) the invented `finished` had **no field anywhere in the UI**, so it was invisible
+  while still emitting a phantom `kind:"finished"` row on the timeline (and into Review's
+  stats). `finalize()` is gone; adding writes the status and nothing else, and dates are
+  chosen in the log editor. `EntryDetail` now renders a **Dates** section for single-sitting
+  media *only when* a `started`/`finished` key actually exists on disk (never hide data we
+  can't otherwise show), and `DateField` grew an explicit × — emptying a native date input
+  isn't reliable in the webview, and these dates are load-bearing for the timeline.
+
 Known: user has reported bugs in the new views to be triaged.
 
 v1 core loop complete. Next: import from other trackers, custom media types, more frontend
