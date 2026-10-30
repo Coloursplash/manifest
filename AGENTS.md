@@ -1,8 +1,9 @@
-# CLAUDE.md — manifest
+# AGENTS.md — manifest
 
-How to work in this repo. `GOAL.md` is the *why*; this is the *how* and the *map*. Keep it
-short and true: rules, architecture, and gotchas that still apply. History belongs in git
-commits, not here.
+Instructions for coding agents (and humans) working in this repo. `GOAL.md` is the *why*;
+this is the *how* and the *map*. Keep it short and true: rules, architecture, and gotchas
+that still apply. History belongs in git commits, not here. (Claude Code reads it through a
+local, gitignored `CLAUDE.md` containing `@AGENTS.md`.)
 
 ## What this is
 
@@ -149,7 +150,14 @@ nix develop -c npm run tauri dev                         # run the app
 nix develop -c npm test                                  # frontend tests
 nix develop -c bash -c 'cd src-tauri && cargo test'      # backend tests
 nix flake check                                          # both, hermetically
+nix build                                                # the release app → ./result
 ```
+
+The flake's `packages.default` is the installable app (built by nixpkgs' `cargo-tauri.hook`:
+`cargo tauri build`, then installed as `$out/Applications/manifest.app` on macOS). Users add
+it to their nix-darwin/NixOS/home-manager config as a flake input (see README). Only built
+and verified on aarch64-darwin so far; Linux is wired (WebKitGTK inputs, `wrapGAppsHook3`)
+but untested.
 
 `nix flake check` only sees git-tracked files, so `git add` new tests first. Refresh the
 flake's `npmDepsHash` (`nix run nixpkgs#prefetch-npm-deps -- package-lock.json`) whenever

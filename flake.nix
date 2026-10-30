@@ -40,8 +40,62 @@
             libsoup_3
             openssl
           ];
+
+        # Hash of the npm dependency tree in package-lock.json. Refresh it with
+        # `nix run nixpkgs#prefetch-npm-deps -- package-lock.json` whenever the
+        # lockfile changes.
+        npmDepsHash = "sha256-rbF4Od8CjIYzJ3IER3Gc6LNA7Cpkq0GJALCjnHHCkbA=";
+
+        # The app itself. `cargo-tauri.hook` runs `cargo tauri build`, which
+        # builds the frontend (`npm run build`, from tauri.conf.json) and the
+        # release binary, then installs the bundle: `$out/Applications/
+        # manifest.app` on macOS, binary + desktop entry on Linux.
+        manifest = rustPlatform.buildRustPackage (finalAttrs: {
+          pname = "manifest";
+          version = "0.1.0";
+          src = self;
+
+          cargoRoot = "src-tauri";
+          buildAndTestSubdir = finalAttrs.cargoRoot;
+          cargoLock.lockFile = ./src-tauri/Cargo.lock;
+
+          npmDeps = pkgs.fetchNpmDeps {
+            name = "manifest-npm-deps";
+            inherit (finalAttrs) src;
+            hash = npmDepsHash;
+          };
+
+          nativeBuildInputs = with pkgs;
+            [ cargo-tauri.hook nodejs_22 npmHooks.npmConfigHook pkg-config ]
+            ++ lib.optionals stdenv.isLinux [ wrapGAppsHook3 ];
+          buildInputs = backendBuildInputs
+            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.glib-networking ];
+
+          # The suites run in `checks`; don't repeat them in every install.
+          doCheck = false;
+
+          meta = {
+            description = "Local-first media tracker for film, TV, anime, books, manga, games and music";
+            license = pkgs.lib.licenses.mit;
+            mainProgram = "manifest";
+            platforms = pkgs.lib.platforms.darwin ++ pkgs.lib.platforms.linux;
+          };
+        });
       in
       {
+        packages = {
+          default = manifest;
+          inherit manifest;
+        };
+
+        apps.default = {
+          type = "app";
+          program =
+            if pkgs.stdenv.isDarwin
+            then "${manifest}/Applications/manifest.app/Contents/MacOS/manifest"
+            else "${manifest}/bin/manifest";
+        };
+
         checks = {
           # Backend: the Rust unit + integration test suites, run offline in a
           # sandbox with crates vendored from Cargo.lock. This is a test-only
@@ -88,7 +142,7 @@
             pname = "manifest-frontend-tests";
             version = "0.1.0";
             src = ./.;
-            npmDepsHash = "sha256-rbF4Od8CjIYzJ3IER3Gc6LNA7Cpkq0GJALCjnHHCkbA=";
+            inherit npmDepsHash;
             # No native build; we only need node_modules to run the tests.
             dontNpmBuild = true;
             doCheck = true;
@@ -116,10 +170,15 @@
             libiconv
           ];
 
-          # Let cargo-tauri find our locally-pinned CLI rather than downloading one.
           shellHook = ''
             echo "manifest dev shell — rust $(rustc --version | cut -d' ' -f2), node $(node --version), tauri $(cargo tauri --version 2>/dev/null | head -1)"
           '';
         };
-      });
+      })
+    // {
+      # `nixpkgs.overlays = [ manifest.overlays.default ];` → `pkgs.manifest`.
+      overlays.default = final: prev: {
+        manifest = self.packages.${prev.stdenv.hostPlatform.system}.default;
+      };
+    };
 }

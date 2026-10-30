@@ -29,3 +29,6 @@ dist-ssr/
 # nix build output symlink
 result
 result-*
+
+# Claude Code entry point — a one-line `@AGENTS.md` import, kept local
+CLAUDE.md

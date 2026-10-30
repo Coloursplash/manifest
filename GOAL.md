@@ -53,7 +53,7 @@ logs:     2017-10-06             |            |         | (IMAX) The pacing is i
           2026-03-01 → 2026-03-19 (a book read over three weeks)
 ```
 
-The exact schema lives in `src-tauri/src/library/db.rs` and is summarised in `CLAUDE.md`.
+The exact schema lives in `src-tauri/src/library/db.rs` and is summarised in `AGENTS.md`.
 
 ## What the app does
 
