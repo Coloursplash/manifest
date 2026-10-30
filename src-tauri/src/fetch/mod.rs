@@ -49,7 +49,7 @@ pub fn client() -> &'static reqwest::Client {
             .user_agent(concat!(
                 "manifest/",
                 env!("CARGO_PKG_VERSION"),
-                " (+https://github.com/chris/manifest)"
+                " (+https://github.com/Coloursplash/manifest)"
             ))
             .timeout(std::time::Duration::from_secs(15))
             .build()

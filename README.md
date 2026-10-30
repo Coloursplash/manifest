@@ -46,7 +46,7 @@ The flake builds the app (a `manifest.app` on macOS). Add it to your system conf
 
 ```nix
 {
-  inputs.manifest.url = "github:<you>/manifest";
+  inputs.manifest.url = "github:Coloursplash/manifest";
   inputs.manifest.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { nix-darwin, manifest, ... }: {
@@ -65,7 +65,7 @@ The flake builds the app (a `manifest.app` on macOS). Add it to your system conf
 with home-manager (`home.packages`) or NixOS (`environment.systemPackages`), or use the
 overlay: `nixpkgs.overlays = [ manifest.overlays.default ]` gives you `pkgs.manifest`.
 
-To try it without installing: `nix run github:<you>/manifest`.
+To try it without installing: `nix run github:Coloursplash/manifest`.
 
 Film/TV search needs a free [TMDB](https://www.themoviedb.org/settings/api) key and game
 search a free [RAWG](https://rawg.io/apidocs) key — add them in Settings, or set
