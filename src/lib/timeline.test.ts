@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { buildTimeline, groupByMonth } from "./timeline";
-import { makeEntry } from "../test/entry";
+import { makeEntry, makeLog } from "../test/entry";
 
 describe("buildTimeline", () => {
-  it("emits one event per dated notes block", () => {
+  it("emits one event per log", () => {
     const e = makeEntry({
       title: "Blade Runner 2049",
-      notes: "2017-10-06\nfirst\n\n2026-07-09 #rewatch\nsecond",
+      logs: [
+        makeLog("2017-10-06", { body: "first" }),
+        makeLog("2026-07-09", { tags: ["rewatch"], body: "second" }),
+      ],
     });
     const events = buildTimeline([e]);
     expect(events).toHaveLength(2);
@@ -14,8 +17,14 @@ describe("buildTimeline", () => {
   });
 
   it("flags rewatch/reread blocks as repeat (case-insensitive)", () => {
-    const e = makeEntry({ notes: "2026-07-09 #REWATCH\nx" });
+    const e = makeEntry({ logs: [makeLog("2026-07-09", { tags: ["REWATCH"], body: "x" })] });
     expect(buildTimeline([e])[0].repeat).toBe(true);
+  });
+
+  it("flags every medium's repeat tag, not just film and book", () => {
+    const game = makeEntry({ medium: "game", logs: [makeLog("2026-07-09", { tags: ["replay"] })] });
+    const album = makeEntry({ medium: "music", logs: [makeLog("2026-07-08", { tags: ["relisten"] })] });
+    expect(buildTimeline([game, album]).map((ev) => ev.repeat)).toEqual([true, true]);
   });
 
   it("adds a `finished`-date fallback event when no block covers that day", () => {
@@ -28,15 +37,15 @@ describe("buildTimeline", () => {
   it("does NOT duplicate when a log block already covers the finished date", () => {
     const e = makeEntry({
       finished: "2026-07-09",
-      notes: "2026-07-09\nwatched it",
+      logs: [makeLog("2026-07-09", { body: "watched it" })],
     });
     const events = buildTimeline([e]);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe("log");
   });
 
-  it("ignores entries with neither a dated log nor a finished date", () => {
-    const e = makeEntry({ notes: "loose text with no date", status: "want" });
+  it("ignores entries with neither a log nor a finished date", () => {
+    const e = makeEntry({ status: "want" });
     expect(buildTimeline([e])).toEqual([]);
   });
 
@@ -103,26 +112,26 @@ describe("groupByMonth", () => {
 // finished it" moment a diary records — while still saying where it started.
 describe("spanned log blocks", () => {
   it("lands the event on the end date and carries the start", () => {
-    const e = makeEntry({ notes: "2026-03-01..2026-03-19\nRead it slowly." });
+    const e = makeEntry({ logs: [makeLog("2026-03-01", { end: "2026-03-19", body: "Read it slowly." })] });
     const [ev] = buildTimeline([e]);
     expect(ev.date).toBe("2026-03-19");
     expect(ev.from).toBe("2026-03-01");
   });
 
   it("leaves `from` unset for a single-day block", () => {
-    expect(buildTimeline([makeEntry({ notes: "2026-03-19" })])[0].from).toBeUndefined();
+    expect(buildTimeline([makeEntry({ logs: [makeLog("2026-03-19")] })])[0].from).toBeUndefined();
   });
 
   it("counts a `finished` date inside the span as already covered", () => {
     // Finished mid-stretch — one event, not a phantom second row.
-    const e = makeEntry({ notes: "2026-03-01..2026-03-19", finished: "2026-03-10" });
+    const e = makeEntry({ logs: [makeLog("2026-03-01", { end: "2026-03-19" })], finished: "2026-03-10" });
     const events = buildTimeline([e]);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe("log");
   });
 
   it("still adds the fallback when `finished` falls outside every span", () => {
-    const e = makeEntry({ notes: "2026-03-01..2026-03-19", finished: "2026-05-02" });
+    const e = makeEntry({ logs: [makeLog("2026-03-01", { end: "2026-03-19" })], finished: "2026-05-02" });
     const events = buildTimeline([e]);
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({ kind: "finished", date: "2026-05-02" });
@@ -130,8 +139,8 @@ describe("spanned log blocks", () => {
 
   it("sorts a span by its end date, alongside single-day events", () => {
     const dates = buildTimeline([
-      makeEntry({ id: "book/a", title: "A", notes: "2026-03-01..2026-03-19" }),
-      makeEntry({ id: "film/b", title: "B", notes: "2026-03-05" }),
+      makeEntry({ id: "book/a", title: "A", logs: [makeLog("2026-03-01", { end: "2026-03-19" })] }),
+      makeEntry({ id: "film/b", title: "B", logs: [makeLog("2026-03-05")] }),
     ]).map((ev) => ev.date);
     expect(dates).toEqual(["2026-03-19", "2026-03-05"]);
   });

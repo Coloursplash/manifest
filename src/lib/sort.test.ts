@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { sortEntries, getSort, setSort, type SortKey } from "./sort";
-import { makeEntry } from "../test/entry";
+import { makeEntry, makeLog } from "../test/entry";
 
 const titles = (es: { title: string }[]) => es.map((e) => e.title);
 
@@ -25,6 +25,14 @@ describe("sortEntries", () => {
       makeEntry({ title: "new", finished: "2026-01-01" }),
     ];
     expect(titles(sortEntries(es, "finished"))).toEqual(["new", "old", "none"]);
+  });
+
+  it("counts a film's log as when it was finished — films have no finished field", () => {
+    const es = [
+      makeEntry({ title: "book", medium: "book", finished: "2026-01-01" }),
+      makeEntry({ title: "film", medium: "film", logs: [makeLog("2026-05-01")] }),
+    ];
+    expect(titles(sortEntries(es, "finished"))).toEqual(["film", "book"]);
   });
 
   it("sorts by release year both directions, missing year last in both", () => {

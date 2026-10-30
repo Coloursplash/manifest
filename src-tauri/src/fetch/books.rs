@@ -117,7 +117,7 @@ fn subjects(v: Option<&serde_json::Value>) -> Option<serde_json::Value> {
         .take(6)
         .map(|s| serde_json::Value::from(s.to_string()))
         .collect();
-    (!picked.is_empty()).then(|| serde_json::Value::Array(picked))
+    (!picked.is_empty()).then_some(serde_json::Value::Array(picked))
 }
 
 async fn google_books(query: &str) -> Result<Vec<Candidate>> {

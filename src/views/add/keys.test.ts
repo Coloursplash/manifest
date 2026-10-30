@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { columnsOf } from "./AddEntryModal";
+import { columnsOf } from "./keys";
 
 // ↑/↓ move by a whole row, so the arrow keys need to know how many cards the
 // `auto-fill` grid actually put on one. jsdom reports every offsetTop as 0, so

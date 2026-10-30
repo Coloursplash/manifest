@@ -1,18 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import { RatingCircles } from "./Rating";
-import { todayISO } from "../lib/notes";
+import type { LogDraft } from "../lib/api";
+import { isDate, normalizeTag, todayISO } from "../lib/logs";
 import { PROGRESS, VERBS, type Medium } from "../lib/types";
 
 /** What one pass of the editor produces. `rating` is only ever set when the
  *  editor was asked to show one (`withRating`); undefined means "don't touch". */
-export interface NoteDraft {
-  /** The day it happened, or the day a stretch *started*. */
-  date: string;
-  /** For media you get through over time: the day it ended. Empty = one day. */
-  end?: string;
-  tags: string[];
-  body: string;
+export interface NoteDraft extends LogDraft {
   rating?: number | null;
 }
 
@@ -75,7 +70,7 @@ export function NoteEditor({
   }, [autoFocus]);
 
   function addTag(raw: string) {
-    const t = raw.trim().replace(/^#/, "").toLowerCase();
+    const t = normalizeTag(raw);
     if (t && !tags.includes(t)) setTags([...tags, t]);
     setTagInput("");
   }
@@ -83,16 +78,27 @@ export function NoteEditor({
     setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t]);
   }
 
+  // Both ends must be real dates, and a stretch can't run backwards. The
+  // backend refuses these too; checking here keeps the button honest.
+  const end = date.trim();
+  const start = spans ? from.trim() : "";
+  const invalid = !isDate(end)
+    ? "Pick a date."
+    : start && !isDate(start)
+      ? "Pick a start date, or clear it."
+      : start > end
+        ? "The start is after the end."
+        : null;
+
   async function submit() {
+    if (invalid) return;
     setBusy(true);
     setError(null);
     try {
-      // Write it chronologically: a start (when given) then the end.
-      const end = date.trim();
-      const start = spans ? from.trim() : "";
+      // Written chronologically: the start (when given), then the end.
       await onSubmit({
-        date: start && start <= end ? start : end,
-        end: start && start <= end ? end : undefined,
+        date: start || end,
+        end: start ? end : undefined,
         tags,
         body: body.trim(),
         ...(withRating ? { rating } : {}),
@@ -121,7 +127,7 @@ export function NoteEditor({
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (!busy) void submit();
+      if (!busy && !invalid) void submit();
       return;
     }
     if (e.key === "Escape" && onCancel) {
@@ -226,7 +232,12 @@ export function NoteEditor({
       />
 
       <div className="row">
-        <button className="btn btn--accent btn--lg" onClick={submit} disabled={busy}>
+        <button
+          className="btn btn--accent btn--lg"
+          onClick={submit}
+          disabled={busy || !!invalid}
+          title={invalid ?? undefined}
+        >
           {label}
           <kbd className="btn__key" aria-hidden="true">
             ⌘⏎
@@ -237,7 +248,7 @@ export function NoteEditor({
             Cancel
           </button>
         )}
-        {error && <span className="error">{error}</span>}
+        {(error || invalid) && <span className="error">{error ?? invalid}</span>}
       </div>
     </div>
   );

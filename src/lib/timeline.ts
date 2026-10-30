@@ -1,20 +1,19 @@
 // Flatten the library into a dated diary — a Letterboxd-style timeline built
 // purely on the client from data already loaded. Two event sources:
-//   1. every dated block in an entry's `notes` log (so a #rewatch / #reread is
-//      its own event), and
+//   1. every log on an entry (so a #rewatch / #reread is its own event), and
 //   2. an entry's `finished` date, as a fallback — but only when no log block
 //      already covers that day (avoids a duplicate row for the same sitting).
 // A block that spans days (a book read over three weeks) lands on the day it
 // *ended* — that's the "I finished it" moment a diary records — and carries its
 // range along for the card to show.
 // Entries with neither a dated log nor a `finished` date don't appear.
-// Read-only: this never touches the `notes` text.
 
-import { parseNotes, spanCovers } from "./notes";
-import type { Entry, Medium } from "./types";
+import { spanCovers } from "./logs";
+import { VERBS, type Entry, type Medium } from "./types";
 
-/** Tags that mark a repeat viewing/reading, surfaced with a ↻ marker. */
-const REPEAT_TAGS = new Set(["rewatch", "reread"]);
+/** Tags that mark a repeat (#rewatch, #reread, #replay, #relisten), surfaced
+ *  with a ↻ marker. Taken from VERBS so every medium's repeat tag counts. */
+const REPEAT_TAGS = new Set(Object.values(VERBS).map((v) => v.repeat));
 
 export interface TimelineEvent {
   date: string; // YYYY-MM-DD, always present — the day it ended
@@ -32,7 +31,7 @@ export function buildTimeline(entries: Entry[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   for (const entry of entries) {
-    const blocks = parseNotes(entry.notes).filter((b) => b.date);
+    const blocks = entry.logs ?? [];
 
     for (const block of blocks) {
       events.push({

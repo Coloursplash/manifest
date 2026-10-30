@@ -1,7 +1,7 @@
 // Integration: the headline "add an entry" loop through the real App — open add
 // mode from the floating pill, search a provider (faked), pick a status on a hit,
 // and watch the created entry land in both the backend store and the grid. This
-// spans OmniBox add-mode → AddEntryModal(panel) → src/lib/api → the fake backend.
+// spans OmniBox add-mode → views/add/AddPanel → src/lib/api → the fake backend.
 import { describe, it, expect } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -42,13 +42,11 @@ describe("add-entry flow", () => {
     await user.click(screen.getByRole("button", { name: "Log it" }));
 
     // Now it lands: the entry, the dated block, and the rating.
-    await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
+    await waitFor(() => expect(backend.entries.get("film/arrival")?.rating).toBe(8));
     const created = backend.entries.get("film/arrival")!;
     expect(created.title).toBe("Arrival");
     expect(created.status).toBe("done");
-    expect(created.notes).toContain("2026-05-25");
-    expect(created.notes).toContain("Heptapods.");
-    expect(created.rating).toBe(8);
+    expect(created.logs).toMatchObject([{ date: "2026-05-25", body: "Heptapods." }]);
 
     // Still no invented `finished` date — the log block is the record.
     expect(created.finished).toBeUndefined();
@@ -83,7 +81,7 @@ describe("add-entry flow", () => {
     await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
     expect(backend.entries.get("film/arrival")!.status).toBe("want");
     expect(screen.queryByText(/Log a watch/)).not.toBeInTheDocument();
-    expect(backend.callsTo("append_note")).toHaveLength(0);
+    expect(backend.callsTo("add_log")).toHaveLength(0);
   });
 
   // The keyboard model: type the title, ⏎ locks it in and hands focus to the
@@ -186,10 +184,10 @@ describe("add-entry flow", () => {
       await user.keyboard("Tense.");
       await user.keyboard("{Meta>}{Enter}{/Meta}");
 
-      await waitFor(() => expect(backend.entries.has("film/sicario")).toBe(true));
+      await waitFor(() => expect(backend.entries.get("film/sicario")?.logs).toHaveLength(1));
       const made = backend.entries.get("film/sicario")!;
       expect(made.status).toBe("done");
-      expect(made.notes).toContain("Tense.");
+      expect(made.logs[0].body).toBe("Tense.");
     });
 
     it("⇧⏎ files a Plan without a dialog and leaves you on the grid", async () => {
@@ -203,7 +201,7 @@ describe("add-entry flow", () => {
       await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
       expect(backend.entries.get("film/arrival")!.status).toBe("want");
       expect(screen.queryByText(/Log a watch/)).not.toBeInTheDocument();
-      expect(backend.callsTo("append_note")).toHaveLength(0);
+      expect(backend.callsTo("add_log")).toHaveLength(0);
     });
   });
 
@@ -234,10 +232,11 @@ describe("add-entry flow", () => {
     await user.type(screen.getByPlaceholderText(/Thoughts/), "Took our time.");
     await user.click(screen.getByRole("button", { name: "Log it" }));
 
-    await waitFor(() => expect(backend.entries.has("tv/severance")).toBe(true));
+    await waitFor(() => expect(backend.entries.get("tv/severance")?.finished).toBe("2026-02-10"));
     const made = backend.entries.get("tv/severance")!;
-    expect(made.notes).toContain("2026-01-05..2026-02-10");
-    expect(made.notes).toContain("Took our time.");
+    expect(made.logs).toMatchObject([
+      { date: "2026-01-05", end: "2026-02-10", body: "Took our time." },
+    ]);
     // The dates you typed are the entry's own too — TV has somewhere to show them.
     expect(made.started).toBe("2026-01-05");
     expect(made.finished).toBe("2026-02-10");
@@ -258,9 +257,9 @@ describe("add-entry flow", () => {
     expect(screen.queryByLabelText("From")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Log it" }));
 
-    await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
+    await waitFor(() => expect(backend.entries.get("film/arrival")?.logs).toHaveLength(1));
     const made = backend.entries.get("film/arrival")!;
-    expect(made.notes).not.toContain("..");
+    expect(made.logs[0].end).toBeUndefined();
     // No `finished` key: a film has no Dates section to show it in, and an
     // invisible date is exactly the phantom-timeline-row bug from before.
     expect(made.finished).toBeUndefined();
@@ -279,5 +278,41 @@ describe("add-entry flow", () => {
     // Past the 300ms debounce window, the gated provider still never searched.
     await new Promise((r) => setTimeout(r, 350));
     expect(backend.callsTo("search_metadata")).toHaveLength(0);
+  });
+
+  it("a double-click on Plan files it once", async () => {
+    const user = userEvent.setup();
+    const { backend } = renderApp({ hasTmdbKey: true, candidates: CANDIDATES });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /add entry/i }));
+    await user.type(screen.getByRole("textbox", { name: /search library/i }), "arrival");
+    await user.dblClick(await screen.findByRole("button", { name: "Plan" }, { timeout: 2000 }));
+
+    await waitFor(() => expect(backend.entries.has("film/arrival")).toBe(true));
+    expect(backend.callsTo("create_entry")).toHaveLength(1);
+    expect(screen.queryByText(/failed|exists/i)).not.toBeInTheDocument();
+  });
+
+  it("retrying a failed log doesn't create the entry twice", async () => {
+    const user = userEvent.setup();
+    const { backend } = renderApp({
+      hasTmdbKey: true,
+      candidates: CANDIDATES,
+      failOnce: ["add_log"],
+    });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /add entry/i }));
+    await user.type(screen.getByRole("textbox", { name: /search library/i }), "arrival");
+    await user.click(await screen.findByRole("button", { name: "Watched" }, { timeout: 2000 }));
+    await user.click(screen.getByRole("button", { name: "Log it" }));
+
+    // The log step failed: the dialog stays open and says so.
+    expect(await screen.findByText(/add_log failed/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Log it" }));
+
+    await waitFor(() => expect(backend.entries.get("film/arrival")?.logs).toHaveLength(1));
+    expect(backend.callsTo("create_entry")).toHaveLength(1);
   });
 });

@@ -1,9 +1,8 @@
 //! Managed app state and its on-disk config.
 //!
-//! Note the split enforced by the prime directive: the *library* (user data)
-//! lives in the user's chosen folder, while this small `config.json` (just a
-//! pointer to that folder) lives in the OS app-config dir. App state never
-//! holds library data — it's re-read from disk on demand.
+//! The *library* (user data) lives in `library.sqlite` inside the folder the
+//! user chose. This small `config.json` — a pointer to that folder plus API
+//! keys — lives in the OS app-config dir and never holds library data.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -12,26 +11,28 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::library::watch::{self, WatchHandle};
+use crate::library::db::Db;
 
-/// Tauri-managed state. Both fields are lazily populated once a library
-/// folder is chosen.
+/// Tauri-managed state: the open library database, once a folder is chosen.
 #[derive(Default)]
 pub struct AppState {
-    pub library: Mutex<Option<PathBuf>>,
-    /// Retained so the watcher thread keeps running; replaced when the
-    /// library folder changes.
-    pub watcher: Mutex<Option<WatchHandle>>,
+    pub db: Mutex<Option<Db>>,
 }
 
 impl AppState {
-    /// The active library root, or a user-facing error if none is set yet.
-    pub fn library_root(&self) -> Result<PathBuf> {
-        self.library
-            .lock()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| anyhow!("no library folder selected yet"))
+    /// Run `f` against the open library, or fail if none is open yet.
+    pub fn with_db<T>(&self, f: impl FnOnce(&mut Db) -> Result<T>) -> Result<T> {
+        let mut guard = self.db.lock().unwrap_or_else(|p| p.into_inner());
+        let db = guard
+            .as_mut()
+            .ok_or_else(|| anyhow!("no library folder selected yet"))?;
+        f(db)
+    }
+
+    /// The open library's folder, if any.
+    pub fn library_path(&self) -> Option<PathBuf> {
+        let guard = self.db.lock().unwrap_or_else(|p| p.into_inner());
+        guard.as_ref().map(|db| db.root().to_path_buf())
     }
 }
 
@@ -105,18 +106,13 @@ pub fn rawg_key(app: &AppHandle) -> Option<String> {
         .filter(|k| !k.trim().is_empty())
 }
 
-/// Point manifest at `root`: create the folder layout, remember it (in state
-/// and config), and start watching it. Reused on startup to restore the last
-/// library and by the "choose folder" command.
+/// Point manifest at `root`: open (or create) its database and remember the
+/// folder in config. Reused on startup to restore the last library and by the
+/// "choose folder" command.
 pub fn activate_library(app: &AppHandle, root: &Path) -> Result<()> {
-    crate::library::store::ensure_layout(root)?;
-
+    let db = Db::open(root)?;
     let state = app.state::<AppState>();
-    *state.library.lock().unwrap() = Some(root.to_path_buf());
-
-    // Start (and retain) a fresh watcher, dropping any previous one.
-    let handle = watch::spawn(app.clone(), root)?;
-    *state.watcher.lock().unwrap() = Some(handle);
+    *state.db.lock().unwrap_or_else(|p| p.into_inner()) = Some(db);
 
     update_config(app, |cfg| {
         cfg.library = Some(root.to_string_lossy().to_string());

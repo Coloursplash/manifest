@@ -1,15 +1,13 @@
-//! The shared data model. An `Entry` is the structured view of one `.toml`
-//! file that we hand to the frontend. Writes never go through this struct —
-//! they mutate the on-disk `toml_edit` document directly so formatting,
-//! key order, comments, and unknown keys survive (see `store.rs`).
+//! The shared data model handed to the frontend. An `Entry` is one row of the
+//! `entries` table plus its `logs` rows (see `db.rs`).
 
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
 /// The kinds of media manifest tracks. The canonical lowercase name
-/// (`film`, `tv`, …) is used in entry ids and TOML; the plural `dir()` is the
-/// on-disk folder under the library root.
+/// (`film`, `tv`, …) is used in entry ids; the plural `dir()` is the folder the
+/// old `.toml` library kept them in (read once, by `import.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Medium {
@@ -33,7 +31,7 @@ impl Medium {
         Medium::Music,
     ];
 
-    /// Canonical lowercase name, used in entry ids and as the TOML value.
+    /// Canonical lowercase name, used in entry ids and the `medium` column.
     pub fn as_str(self) -> &'static str {
         match self {
             Medium::Film => "film",
@@ -46,7 +44,7 @@ impl Medium {
         }
     }
 
-    /// Folder name under the library root that holds this medium's entries.
+    /// Folder the legacy `.toml` library kept this medium's entries in.
     pub fn dir(self) -> &'static str {
         match self {
             Medium::Film => "films",
@@ -77,9 +75,8 @@ impl FromStr for Medium {
     }
 }
 
-/// Where an entry sits in the user's watch/read journey. Stored verbatim as
-/// the `status` key; a missing/unknown value is represented as `None` rather
-/// than being invented.
+/// Where an entry sits in the user's watch/read journey. A missing value is
+/// `None` rather than being invented.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -117,12 +114,11 @@ impl FromStr for Status {
     }
 }
 
-/// The structured, frontend-facing view of one entry file.
+/// The frontend-facing view of one entry.
 ///
-/// `extra` carries every top-level TOML key that isn't one of the well-known
-/// shared fields — that's where per-medium fields (`director`, `author`, …)
-/// and any keys the user added by hand live, so the UI can render them
-/// generically and nothing gets silently dropped.
+/// `extra` carries every field that isn't one of the typed shared ones — the
+/// per-medium metadata (`director`, `author`, `episodes`, …) — so the UI can
+/// render it generically.
 #[derive(Debug, Clone, Serialize)]
 pub struct Entry {
     /// Stable id: `"{medium}/{slug}"`, e.g. `"film/blade-runner-2049"`.
@@ -161,18 +157,26 @@ pub struct Entry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub season: Option<i64>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
+    /// The dated log, oldest first. Each row has a stable `id`, so editing or
+    /// deleting one can never land on its neighbour.
+    pub logs: Vec<LogEntry>,
 
-    /// All other top-level keys, preserved as JSON for display. Totals like
-    /// `pages`/`episodes`/`volumes` live here (filled from metadata).
+    /// Per-medium metadata as JSON. Totals like `pages`/`episodes`/`volumes`
+    /// live here (filled from metadata).
     #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Top-level keys that map onto typed `Entry` fields; everything else falls
-/// through to `extra`.
-pub const KNOWN_KEYS: [&str; 12] = [
-    "title", "year", "cover", "status", "rating", "tags", "owned", "started", "finished",
-    "progress", "season", "notes",
-];
+/// One dated block in an entry's log: a single day, or a span (`end`) for the
+/// media you get through over days or weeks rather than in one sitting.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LogEntry {
+    pub id: i64,
+    /// `YYYY-MM-DD` — the day, or the first day of a span.
+    pub date: String,
+    /// Last day of a span. Absent for a single day; never equal to `date`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<String>,
+    pub tags: Vec<String>,
+    pub body: String,
+}

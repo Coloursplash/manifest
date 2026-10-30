@@ -1,6 +1,7 @@
 // Sort order for the grid, persisted locally. The timeline ignores this — it's
 // always date-desc. Entries missing the sort field sort to the end.
 
+import { firstStarted, lastDone } from "./logs";
 import type { Entry } from "./types";
 
 export type SortKey =
@@ -81,8 +82,8 @@ function byNumber(get: (e: Entry) => number | undefined, dir: "asc" | "desc") {
 const COMPARATORS: Record<SortKey, (a: Entry, b: Entry) => number> = {
   title: byTitle,
   "title-desc": (a, b) => -byTitle(a, b),
-  finished: byDateDesc((e) => e.finished),
-  started: byDateDesc((e) => e.started),
+  finished: byDateDesc(lastDone),
+  started: byDateDesc(firstStarted),
   released: byNumber((e) => e.year, "desc"),
   "released-asc": byNumber((e) => e.year, "asc"),
   score: byNumber((e) => e.rating, "desc"),

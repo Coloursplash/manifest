@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import { EntryDetail } from "./EntryDetail";
 import { HEADER_SLOT_ID } from "../components/HeaderSlot";
-import { makeEntry } from "../test/entry";
+import { makeEntry, makeLog } from "../test/entry";
 import type { Entry } from "../lib/types";
 
 // The view talks to the backend through ../lib/api; mock it so we can assert the
@@ -14,15 +14,18 @@ vi.mock("../lib/api", () => ({
   patchEntry: vi.fn((_id: string, patch: Record<string, unknown>) =>
     Promise.resolve({ ...base, ...patch } as Entry),
   ),
-  appendNote: vi.fn(() => Promise.resolve(base)),
-  updateNote: vi.fn(() => Promise.resolve(base)),
-  deleteNote: vi.fn(() => Promise.resolve(base)),
+  addLog: vi.fn(() => Promise.resolve(base)),
+  updateLog: vi.fn(() => Promise.resolve(base)),
+  deleteLog: vi.fn(() => Promise.resolve(base)),
   deleteEntry: vi.fn(() => Promise.resolve()),
   cacheCover: vi.fn(() => Promise.resolve("")),
   coverSrc: (p: string) => p,
 }));
 
-import { patchEntry, appendNote, deleteEntry } from "../lib/api";
+import { patchEntry, addLog, deleteEntry, type LogDraft } from "../lib/api";
+
+/** The draft passed to the nth addLog call. */
+const logged = (n = 0) => (addLog as any).mock.calls[n][1] as LogDraft;
 
 let base: Entry;
 
@@ -161,9 +164,9 @@ describe("log flow", () => {
     // empty body → the submit reads "Just watched it"
     await user.click(screen.getByRole("button", { name: "Just watched it" }));
 
-    expect(appendNote).toHaveBeenCalledOnce();
-    const [id, date, tags, body] = (appendNote as any).mock.calls[0];
-    expect(id).toBe(base.id);
+    expect(addLog).toHaveBeenCalledOnce();
+    expect((addLog as any).mock.calls[0][0]).toBe(base.id);
+    const { date, tags, body } = logged();
     expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(tags).toEqual([]);
     expect(body).toBe("");
@@ -181,7 +184,7 @@ describe("log flow", () => {
     );
     await user.click(screen.getByRole("button", { name: "Log with note" }));
 
-    const [, , tags, body] = (appendNote as any).mock.calls[0];
+    const { tags, body } = logged();
     expect(tags).toEqual([]);
     expect(body).toBe("The sound design shakes the room.");
   });
@@ -194,21 +197,21 @@ describe("log flow", () => {
     await user.click(screen.getByRole("button", { name: "#rewatch" }));
     await user.click(screen.getByRole("button", { name: "Just watched it" }));
 
-    const [, , tags] = (appendNote as any).mock.calls[0];
+    const { tags } = logged();
     expect(tags).toEqual(["rewatch"]);
   });
 
   it("renders existing log blocks and an empty-state hint", () => {
     const { onChanged } = renderDetail({
-      notes: "2026-07-09 #rewatch\nSecond viewing.",
+      logs: [makeLog("2026-07-09", { tags: ["rewatch"], body: "Second viewing." })],
     });
     expect(screen.getByText("2026-07-09")).toBeInTheDocument();
     expect(screen.getByText("Second viewing.")).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
   });
 
-  it("shows 'Nothing logged yet.' when there are no notes", () => {
-    renderDetail({ notes: undefined });
+  it("shows 'Nothing logged yet.' when there are no logs", () => {
+    renderDetail({ logs: [] });
     expect(screen.getByText("Nothing logged yet.")).toBeInTheDocument();
   });
 });
@@ -300,7 +303,7 @@ describe("logging something you got through over time", () => {
     await user.click(screen.getByRole("button", { name: "Just read it" }));
 
     // date = start, end = finish — the block reads 2026-03-01..2026-03-19.
-    const [, date, , , end] = (appendNote as any).mock.calls[0];
+    const { date, end } = logged();
     expect(date).toBe("2026-03-01");
     expect(end).toBe("2026-03-19");
     // …and the dates you typed become the entry's own, since it had none.
@@ -316,7 +319,7 @@ describe("logging something you got through over time", () => {
     await user.click(screen.getByRole("button", { name: /Log a read/ }));
     await user.click(screen.getByRole("button", { name: "Just read it" }));
 
-    const [, date, , , end] = (appendNote as any).mock.calls[0];
+    const { date, end } = logged();
     expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(end).toBeUndefined();
     // Only `finished` — there's no start to record.
@@ -332,7 +335,7 @@ describe("logging something you got through over time", () => {
     await user.type(screen.getByLabelText("From"), "2026-03-01");
     await user.click(screen.getByRole("button", { name: "Just read it" }));
 
-    expect(appendNote).toHaveBeenCalledOnce();
+    expect(addLog).toHaveBeenCalledOnce();
     expect(patchEntry).not.toHaveBeenCalled();
   });
 
@@ -342,13 +345,16 @@ describe("logging something you got through over time", () => {
     await user.click(screen.getByRole("button", { name: /Log a watch/ }));
     await user.click(screen.getByRole("button", { name: "Just watched it" }));
 
-    expect(appendNote).toHaveBeenCalledOnce();
+    expect(addLog).toHaveBeenCalledOnce();
     expect(patchEntry).not.toHaveBeenCalled();
   });
 
   it("shows an existing span on the block, and re-opens it in both fields", async () => {
     const user = userEvent.setup();
-    renderDetail({ medium: "book", notes: "2026-03-01..2026-03-19\nSlowly." });
+    renderDetail({
+      medium: "book",
+      logs: [makeLog("2026-03-01", { end: "2026-03-19", body: "Slowly." })],
+    });
 
     expect(screen.getByText("2026-03-01 → 2026-03-19")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit" }));

@@ -103,8 +103,20 @@ export interface Entry {
   finished?: string; // YYYY-MM-DD
   progress?: number; // page / episode / chapter
   season?: number;
-  notes?: string;
-  extra?: Record<string, unknown>; // per-medium + hand-added keys (incl. totals)
+  /** The dated log, oldest first. Each has a stable `id` the edit/delete
+   *  commands address it by. */
+  logs: LogEntry[];
+  extra?: Record<string, unknown>; // per-medium metadata (incl. totals)
+}
+
+/** One dated block of an entry's log: a single day, or a span (`end`) for the
+ *  media you get through over days or weeks. Mirrors `LogEntry` in schema.rs. */
+export interface LogEntry {
+  id: number;
+  date: string; // YYYY-MM-DD
+  end?: string; // last day of a span; never equal to `date`
+  tags: string[];
+  body: string;
 }
 
 export interface Candidate {
@@ -125,5 +137,4 @@ export interface CreatePayload {
   cover?: string;
   status?: Status;
   fields?: Record<string, unknown>;
-  notes?: string;
 }

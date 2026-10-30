@@ -1,7 +1,7 @@
 //! Shared helpers for the backend integration suites.
 //!
-//! These tests drive the real `store` module against a real temp directory —
-//! no Tauri app, no mocks — so they exercise the on-disk behaviour end to end.
+//! These tests drive the real `Db` against a real SQLite file in a temp
+//! directory — no Tauri app, no mocks.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

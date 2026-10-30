@@ -7,7 +7,7 @@ import { vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
 import App from "../../src/App";
-import type { Candidate, CreatePayload, Entry } from "../../src/lib/types";
+import type { Candidate, CreatePayload, Entry, LogEntry } from "../../src/lib/types";
 
 export interface BackendSeed {
   /** The active library folder. `null` forces onboarding; defaults to "/lib". */
@@ -17,6 +17,8 @@ export interface BackendSeed {
   hasRawgKey?: boolean;
   /** What `search_metadata` returns for any query. */
   candidates?: Candidate[];
+  /** Commands that fail (reject) the first time they're called. */
+  failOnce?: string[];
 }
 
 export interface FakeBackend {
@@ -37,6 +39,7 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
   for (const e of seed.entries ?? []) entries.set(e.id, { ...e });
   const path = seed.path === undefined ? "/lib" : seed.path;
   const calls: FakeBackend["calls"] = [];
+  let logSeq = 0;
 
   const router = (cmd: string, args: Record<string, unknown>): unknown => {
     calls.push({ cmd, args });
@@ -59,12 +62,6 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
       case "set_tmdb_key":
       case "set_rawg_key":
         return null;
-      case "set_status": {
-        const e = entries.get(id)!;
-        const next: Entry = { ...e, status: (args.status as Entry["status"]) ?? undefined };
-        entries.set(id, next);
-        return next;
-      }
       case "patch_entry": {
         const e = entries.get(id)!;
         const next: Entry = { ...e, ...(args.patch as Partial<Entry>) };
@@ -74,13 +71,16 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
         entries.set(id, next);
         return next;
       }
-      case "append_note": {
+      case "add_log": {
         const e = entries.get(id)!;
-        const tags = (args.tags as string[]) ?? [];
-        const span = args.end ? `${args.date}..${args.end}` : `${args.date}`;
-        const header = tags.length ? `${span} ${tags.map((t) => `#${t}`).join(" ")}` : span;
-        const block = args.body ? `${header}\n${args.body}` : header;
-        const next: Entry = { ...e, notes: e.notes ? `${block}\n\n${e.notes}` : block };
+        const log: LogEntry = {
+          id: ++logSeq,
+          date: args.date as string,
+          ...(args.end ? { end: args.end as string } : {}),
+          tags: (args.tags as string[]) ?? [],
+          body: (args.body as string) ?? "",
+        };
+        const next: Entry = { ...e, logs: [...e.logs, log] };
         entries.set(id, next);
         return next;
       }
@@ -96,7 +96,7 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
           year: p.year,
           cover: p.cover,
           status: p.status,
-          notes: p.notes,
+          logs: [],
           extra: p.fields ?? {},
         };
         entries.set(eid, e);
@@ -116,10 +116,14 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
     }
   };
 
-  vi.mocked(invoke).mockImplementation(
-    ((cmd: string, args?: Record<string, unknown>) =>
-      Promise.resolve(router(cmd, args ?? {}))) as typeof invoke,
-  );
+  const failing = new Set(seed.failOnce ?? []);
+  vi.mocked(invoke).mockImplementation(((cmd: string, args?: Record<string, unknown>) => {
+    if (failing.delete(cmd)) {
+      calls.push({ cmd, args: args ?? {} });
+      return Promise.reject(`${cmd} failed`);
+    }
+    return Promise.resolve(router(cmd, args ?? {}));
+  }) as typeof invoke);
 
   return {
     entries,

@@ -142,7 +142,7 @@ fn names(list: Option<&Value>, pointer: &str) -> Option<Value> {
         .filter_map(|e| e.pointer(pointer).and_then(|v| v.as_str()))
         .map(|s| Value::from(s.to_string()))
         .collect();
-    (!picked.is_empty()).then(|| Value::Array(picked))
+    (!picked.is_empty()).then_some(Value::Array(picked))
 }
 
 /// Comma-join a string `Value::Array` into a single `Value::String`.

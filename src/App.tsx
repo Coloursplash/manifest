@@ -6,7 +6,6 @@ import {
   hasRawgKey,
   hasTmdbKey,
   listEntries,
-  onLibraryChanged,
   setLibraryFolder,
 } from "./lib/api";
 import {
@@ -57,7 +56,8 @@ import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
 import { Timeline } from "./views/Timeline";
 import { EntryDetail } from "./views/EntryDetail";
-import { AddEntryModal, type AddKeyHandler } from "./views/AddEntryModal";
+import { AddPanel } from "./views/add/AddPanel";
+import type { AddKeyHandler } from "./views/add/keys";
 import { SettingsModal } from "./views/SettingsModal";
 import { Review } from "./views/Review";
 
@@ -162,7 +162,7 @@ export default function App() {
     }
   }, []);
 
-  // Initial load: resolve the library, then entries + key + disk watcher.
+  // Initial load: resolve the library, then its entries and API-key flags.
   useEffect(() => {
     // In a plain browser there's no Tauri IPC, so this rejects — fall back to
     // the onboarding screen rather than hanging on "loading…".
@@ -177,14 +177,10 @@ export default function App() {
     reload();
     hasTmdbKey().then(setHasKey);
     hasRawgKey().then(setHasRawg);
-    const unlisten = onLibraryChanged(reload);
-    return () => {
-      unlisten.then((fn) => fn());
-    };
   }, [libraryPath, reload]);
 
   // Drop any open detail/filter, then point at `path` — the effect above
-  // reloads its entries, keys and disk watcher and records it as most-recent.
+  // reloads its entries and keys and records it as most-recent.
   const finalizeSwitch = useCallback((path: string) => {
     setView({ kind: "grid" });
     setFilterMedium(null);
@@ -285,8 +281,7 @@ export default function App() {
   // search driven by the pill's single input (`search`).
   const renderAdd = useCallback(
     (q: string, close: () => void): ReactNode => (
-      <AddEntryModal
-        variant="panel"
+      <AddPanel
         search={q}
         hasKey={hasKey}
         hasRawgKey={hasRawg}

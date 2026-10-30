@@ -2,9 +2,8 @@
 // only through here — no raw `invoke` in components.
 
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { Candidate, CreatePayload, Entry, Medium, Status } from "./types";
+import type { Candidate, CreatePayload, Entry, Medium } from "./types";
 
 // --- library folder ---
 
@@ -20,34 +19,25 @@ export const setLibraryFolder = (path: string) =>
 
 export const listEntries = () => invoke<Entry[]>("list_entries");
 
-export const getEntry = (id: string) => invoke<Entry>("get_entry", { id });
+/** What the log editor submits. `end` makes the block a span — for the media
+ *  you get through over days or weeks. Omit it for a single day. */
+export interface LogDraft {
+  date: string;
+  end?: string;
+  tags: string[];
+  body: string;
+}
 
-/** `end` makes the block a span (`START..END`) — for the media you get through
- *  over days or weeks rather than in one sitting. Omit it for a single day. */
-export const appendNote = (
-  id: string,
-  date: string,
-  tags: string[],
-  body: string,
-  end?: string,
-) => invoke<Entry>("append_note", { id, date, end: end ?? null, tags, body });
+const logArgs = (d: LogDraft) => ({ date: d.date, end: d.end ?? null, tags: d.tags, body: d.body });
 
-export const updateNote = (
-  id: string,
-  index: number,
-  date: string,
-  tags: string[],
-  body: string,
-  end?: string,
-) => invoke<Entry>("update_note", { id, index, date, end: end ?? null, tags, body });
+export const addLog = (id: string, d: LogDraft) => invoke<Entry>("add_log", { id, ...logArgs(d) });
 
-export const deleteNote = (id: string, index: number) =>
-  invoke<Entry>("delete_note", { id, index });
+export const updateLog = (logId: number, d: LogDraft) =>
+  invoke<Entry>("update_log", { logId, ...logArgs(d) });
 
-export const setStatus = (id: string, status: Status | null) =>
-  invoke<Entry>("set_status", { id, status });
+export const deleteLog = (logId: number) => invoke<Entry>("delete_log", { logId });
 
-/** Set/clear arbitrary top-level fields (progress, dates, tags). null clears. */
+/** Set/clear fields (status, rating, dates, progress, metadata). null clears. */
 export const patchEntry = (id: string, patch: Record<string, unknown>) =>
   invoke<Entry>("patch_entry", { id, patch });
 
@@ -84,8 +74,3 @@ export const setRawgKey = (key: string) =>
 // --- covers: turn a cached path into a webview-loadable src ---
 
 export const coverSrc = (path: string) => convertFileSrc(path);
-
-// --- events: the library changed on disk (external edit or our own write) ---
-
-export const onLibraryChanged = (cb: () => void): Promise<UnlistenFn> =>
-  listen("library:changed", cb);

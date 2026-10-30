@@ -1,6 +1,5 @@
 //! Thin Tauri command layer. These do argument marshalling and error
-//! stringification only; all real logic lives in `library::store` and
-//! `state`. Every command that touches the library reads the root fresh.
+//! stringification only; all real logic lives in `library::db` and `state`.
 
 use serde::Deserialize;
 use tauri::{AppHandle, State};
@@ -8,23 +7,20 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::cover;
 use crate::fetch::{self, Candidate};
-use crate::library::store::{self, NewEntry};
-use crate::library::{Entry, Medium, Status};
+use crate::library::db::{LogDraft, NewEntry};
+use crate::library::{Entry, Medium};
 use crate::state::{self, AppState};
 
 /// Map any internal error to a plain string for the frontend.
 fn err<E: std::fmt::Display>(e: E) -> String {
-    e.to_string()
+    format!("{e:#}")
 }
 
-/// The currently selected library folder, if any.
+/// The currently open library folder, if any.
 #[tauri::command]
 fn get_library_path(state: State<AppState>) -> Option<String> {
     state
-        .library
-        .lock()
-        .unwrap()
-        .as_ref()
+        .library_path()
         .map(|p| p.to_string_lossy().to_string())
 }
 
@@ -53,30 +49,33 @@ async fn choose_library_folder(app: AppHandle) -> Result<Option<String>, String>
 /// Activate a library folder by explicit path (used to restore on startup or
 /// to set one without the picker).
 #[tauri::command]
-fn set_library_folder(app: AppHandle, path: String) -> Result<Vec<Entry>, String> {
+fn set_library_folder(
+    app: AppHandle,
+    state: State<AppState>,
+    path: String,
+) -> Result<Vec<Entry>, String> {
     let root = std::path::PathBuf::from(path);
+    if !root.is_dir() {
+        return Err(format!("{} is not a folder", root.display()));
+    }
     state::activate_library(&app, &root).map_err(err)?;
-    store::load_all(&root).map_err(err)
+    state.with_db(|db| db.list()).map_err(err)
 }
 
 #[tauri::command]
 fn list_entries(state: State<AppState>) -> Result<Vec<Entry>, String> {
-    let root = state.library_root().map_err(err)?;
-    store::load_all(&root).map_err(err)
+    state.with_db(|db| db.list()).map_err(err)
 }
 
 #[tauri::command]
 fn get_entry(state: State<AppState>, id: String) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
-    store::load_one(&root, &id).map_err(err)
+    state.with_db(|db| db.get(&id)).map_err(err)
 }
 
-/// Append a dated block to an entry's notes ("log a watch/read"). `tags` become
-/// `#tag`s on the header line; `body` may be empty (just log the date + tags).
-/// `end` turns the header into a `START..END` span, for the media you get
-/// through over days or weeks rather than in one sitting.
+/// Add a dated block to an entry's log ("log a watch/read"). `end` makes it a
+/// span, for the media you get through over days or weeks. Returns the entry.
 #[tauri::command]
-fn append_note(
+fn add_log(
     state: State<AppState>,
     id: String,
     date: String,
@@ -84,56 +83,51 @@ fn append_note(
     tags: Vec<String>,
     body: String,
 ) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
-    store::append_note(&root, &id, &date, end.as_deref(), &tags, &body).map_err(err)
+    let draft = LogDraft {
+        date,
+        end,
+        tags,
+        body,
+    };
+    state.with_db(|db| db.add_log(&id, draft)).map_err(err)
 }
 
-/// Replace an existing note block (by index) with edited content.
+/// Replace one log block, addressed by its id. Returns the owning entry.
 #[tauri::command]
-fn update_note(
+fn update_log(
     state: State<AppState>,
-    id: String,
-    index: usize,
+    log_id: i64,
     date: String,
     end: Option<String>,
     tags: Vec<String>,
     body: String,
 ) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
-    store::edit_note(&root, &id, index, &date, end.as_deref(), &tags, &body).map_err(err)
+    let draft = LogDraft {
+        date,
+        end,
+        tags,
+        body,
+    };
+    state
+        .with_db(|db| db.update_log(log_id, draft))
+        .map_err(err)
 }
 
-/// Delete a note block by index.
+/// Delete one log block by id. Returns the owning entry.
 #[tauri::command]
-fn delete_note(state: State<AppState>, id: String, index: usize) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
-    store::delete_note(&root, &id, index).map_err(err)
+fn delete_log(state: State<AppState>, log_id: i64) -> Result<Entry, String> {
+    state.with_db(|db| db.delete_log(log_id)).map_err(err)
 }
 
-/// Set/clear arbitrary top-level fields (progress, dates, status, rating,
-/// tags). A `null` value removes the key.
+/// Set/clear fields (status, rating, dates, progress, metadata). A `null`
+/// value clears one.
 #[tauri::command]
 fn patch_entry(
     state: State<AppState>,
     id: String,
     patch: serde_json::Map<String, serde_json::Value>,
 ) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
-    store::patch_entry(&root, &id, &patch).map_err(err)
-}
-
-/// Set or clear an entry's status. `status: None` clears it.
-#[tauri::command]
-fn set_status(state: State<AppState>, id: String, status: Option<String>) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
-    let parsed = match status {
-        Some(s) => Some(
-            s.parse::<Status>()
-                .map_err(|_| format!("unknown status: {s}"))?,
-        ),
-        None => None,
-    };
-    store::set_status(&root, &id, parsed).map_err(err)
+    state.with_db(|db| db.patch(&id, &patch)).map_err(err)
 }
 
 #[derive(Deserialize)]
@@ -149,44 +143,33 @@ pub struct CreatePayload {
     /// Per-medium fields (director, author, …).
     #[serde(default)]
     pub fields: serde_json::Map<String, serde_json::Value>,
-    #[serde(default)]
-    pub notes: Option<String>,
 }
 
 #[tauri::command]
 fn create_entry(state: State<AppState>, payload: CreatePayload) -> Result<Entry, String> {
-    let root = state.library_root().map_err(err)?;
     let medium: Medium = payload
         .medium
         .parse()
         .map_err(|_| format!("unknown medium: {}", payload.medium))?;
     let status = match payload.status {
-        Some(s) => Some(
-            s.parse::<Status>()
-                .map_err(|_| format!("unknown status: {s}"))?,
-        ),
+        Some(s) => Some(s.parse().map_err(|_| format!("unknown status: {s}"))?),
         None => None,
     };
-    store::create_entry(
-        &root,
-        NewEntry {
-            medium,
-            title: payload.title,
-            year: payload.year,
-            cover: payload.cover,
-            status,
-            fields: payload.fields,
-            notes: payload.notes,
-        },
-    )
-    .map_err(err)
+    let new = NewEntry {
+        medium,
+        title: payload.title,
+        year: payload.year,
+        cover: payload.cover,
+        status,
+        fields: payload.fields,
+    };
+    state.with_db(|db| db.create(new)).map_err(err)
 }
 
-/// Move an entry to the library's `.trash/` folder.
+/// Move an entry to the trash (kept in the database, hidden from the library).
 #[tauri::command]
 fn delete_entry(state: State<AppState>, id: String) -> Result<(), String> {
-    let root = state.library_root().map_err(err)?;
-    store::trash_entry(&root, &id).map_err(err)
+    state.with_db(|db| db.trash(&id)).map_err(err)
 }
 
 // --- fetch + covers (M2) ---
@@ -285,11 +268,10 @@ pub fn handlers() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sy
         set_library_folder,
         list_entries,
         get_entry,
-        append_note,
-        update_note,
-        delete_note,
+        add_log,
+        update_log,
+        delete_log,
         patch_entry,
-        set_status,
         create_entry,
         delete_entry,
         search_metadata,

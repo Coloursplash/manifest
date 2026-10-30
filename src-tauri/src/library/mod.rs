@@ -1,7 +1,8 @@
-//! The library: schema, on-disk store, and folder watching.
+//! The library: the data model, the SQLite database, and the one-time import
+//! of the legacy `.toml` library.
 
+pub mod db;
+pub mod import;
 pub mod schema;
-pub mod store;
-pub mod watch;
 
-pub use schema::{Entry, Medium, Status};
+pub use schema::{Entry, LogEntry, Medium, Status};

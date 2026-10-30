@@ -1,19 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { Cover } from "../components/Cover";
 import { HeaderSlot } from "../components/HeaderSlot";
+import { LogList } from "../components/LogList";
 import { NoteEditor, type NoteDraft } from "../components/NoteEditor";
+import { DateField, NumberField } from "../components/Fields";
 import { RatingCircles } from "../components/Rating";
-import { IconBack, IconCheck, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
-import {
-  appendNote,
-  deleteEntry,
-  deleteNote,
-  patchEntry,
-  updateNote,
-} from "../lib/api";
+import { IconBack, IconCheck, IconPlus, IconTrash } from "../components/icons";
+import { addLog, deleteEntry, patchEntry } from "../lib/api";
 import { formatValue, humanizeLabel } from "../lib/fields";
-import { formatSpan, parseNotes, todayISO, type NoteBlock } from "../lib/notes";
+import { todayISO } from "../lib/logs";
 import {
   MEDIUM_LABEL,
   PROGRESS,
@@ -44,7 +40,6 @@ export function EntryDetail({
   const total = typeof totalRaw === "number" ? totalRaw : undefined;
   const creator = creatorOf(entry);
 
-  const blocks = useMemo(() => parseNotes(entry.notes), [entry.notes]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
@@ -83,7 +78,7 @@ export function EntryDetail({
    *  entry's own `started`/`finished` — but only where they're still empty, so
    *  logging a reread never rewrites when you first read it. */
   async function logBlock(d: NoteDraft): Promise<Entry> {
-    const logged = await appendNote(entry.id, d.date, d.tags, d.body, d.end);
+    const logged = await addLog(entry.id, d);
     if (shape.single) return logged;
     const patch: Record<string, unknown> = {};
     if (d.end && !entry.started) patch.started = d.date;
@@ -334,20 +329,7 @@ export function EntryDetail({
             )}
 
             <div style={{ marginTop: 20 }}>
-              {blocks.length === 0 && (
-                <p className="muted" style={{ fontSize: "0.8rem" }}>
-                  Nothing logged yet.
-                </p>
-              )}
-              {blocks.map((b, i) => (
-                <NoteItem
-                  key={i}
-                  entry={entry}
-                  block={b}
-                  index={i}
-                  onChanged={onChanged}
-                />
-              ))}
+              <LogList entry={entry} onChanged={onChanged} />
             </div>
           </div>
 
@@ -377,166 +359,6 @@ function creatorOf(entry: Entry): string | undefined {
     case "music":
       return pick("artist");
   }
-}
-
-// --- one log entry, with inline edit/delete ---
-
-function NoteItem({
-  entry,
-  block,
-  index,
-  onChanged,
-}: {
-  entry: Entry;
-  block: NoteBlock;
-  index: number;
-  onChanged: (e: Entry) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-
-  async function del() {
-    if (!confirm("Delete this log entry?")) return;
-    onChanged(await deleteNote(entry.id, index));
-  }
-
-  if (editing) {
-    return (
-      <NoteEditor
-        medium={entry.medium}
-        mode="edit"
-        initial={{
-          date: block.date || todayISO(),
-          end: block.end,
-          tags: block.tags,
-          body: block.body,
-        }}
-        onSubmit={async (d) => {
-          onChanged(await updateNote(entry.id, index, d.date, d.tags, d.body, d.end));
-          setEditing(false);
-        }}
-        onCancel={() => setEditing(false)}
-      />
-    );
-  }
-
-  return (
-    <div className={`note-block ${block.body ? "" : "note-block--bare"}`}>
-      <div className="note-block__head">
-        {block.date && (
-          <span className="note-block__date">{formatSpan(block.date, block.end)}</span>
-        )}
-        {block.rest && (
-          <span className="muted" style={{ fontSize: "0.72rem" }}>{block.rest}</span>
-        )}
-        {block.tags.map((t) => (
-          <span className="tag" key={t}>
-            {t}
-          </span>
-        ))}
-        <div className="note-block__actions">
-          <button
-            className="btn btn--ghost btn--icon-sm btn--dim"
-            onClick={() => setEditing(true)}
-            title="Edit"
-          >
-            <IconEdit size={15} />
-          </button>
-          <button
-            className="btn btn--ghost btn--icon-sm btn--dim"
-            onClick={del}
-            title="Delete"
-          >
-            <IconTrash size={15} />
-          </button>
-        </div>
-      </div>
-      {block.body && <div className="note-block__body">{block.body}</div>}
-    </div>
-  );
-}
-
-// --- small commit-on-change field helpers ---
-
-/** A date + an explicit clear. The × matters: emptying a native date input isn't
- *  reliably possible in the webview, and a wrong date here is not cosmetic — it
- *  puts a row on the timeline. */
-function DateField({
-  label,
-  value,
-  onCommit,
-}: {
-  label: string;
-  value?: string;
-  onCommit: (v: string | null) => void;
-}) {
-  return (
-    <div className="stack" style={{ gap: 4 }}>
-      <span className="label">{label}</span>
-      <div className="row" style={{ gap: 4 }}>
-        <input
-          className="input"
-          style={{ width: 150 }}
-          type="date"
-          value={value ?? ""}
-          aria-label={label}
-          onChange={(e) => onCommit(e.target.value || null)}
-        />
-        {value && (
-          <button
-            className="btn btn--ghost btn--icon-sm btn--dim"
-            onClick={() => onCommit(null)}
-            title={`Clear ${label.toLowerCase()} date`}
-            aria-label={`Clear ${label}`}
-          >
-            <IconClose size={15} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onCommit,
-  className,
-}: {
-  label?: string;
-  value?: number;
-  onCommit: (v: number | null) => void;
-  className?: string;
-}) {
-  const [local, setLocal] = useState(value?.toString() ?? "");
-  useEffect(() => setLocal(value?.toString() ?? ""), [value]);
-
-  function commit() {
-    const trimmed = local.trim();
-    if (trimmed === "") return onCommit(null);
-    const n = parseInt(trimmed, 10);
-    if (!Number.isNaN(n)) onCommit(n);
-  }
-
-  const input = (
-    <input
-      className={`input ${className ?? ""}`}
-      style={className ? undefined : { width: 90 }}
-      type="number"
-      inputMode="numeric"
-      value={local}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === "Enter" && commit()}
-    />
-  );
-
-  if (!label) return input;
-  return (
-    <label className="stack" style={{ gap: 4 }}>
-      <span className="label">{label}</span>
-      {input}
-    </label>
-  );
 }
 
 function FieldRow({ label, value }: { label: string; value: unknown }) {
