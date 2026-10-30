@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EntryDetail } from "./EntryDetail";
+import { HEADER_SLOT_ID } from "../components/HeaderSlot";
 import { makeEntry } from "../test/entry";
 import type { Entry } from "../lib/types";
 
@@ -30,14 +31,20 @@ function renderDetail(overrides: Partial<Entry> = {}, showOwned = false) {
   const onChanged = vi.fn();
   const onDeleted = vi.fn();
   const onBack = vi.fn();
+  // The page's Back/Trash actions portal into the app header's slots (App owns
+  // those elements — see components/HeaderSlot.tsx), so stand them up here.
   render(
-    <EntryDetail
-      entry={base}
-      onBack={onBack}
-      onChanged={onChanged}
-      onDeleted={onDeleted}
-      showOwned={showOwned}
-    />,
+    <>
+      <div id={HEADER_SLOT_ID.left} />
+      <div id={HEADER_SLOT_ID.right} />
+      <EntryDetail
+        entry={base}
+        onBack={onBack}
+        onChanged={onChanged}
+        onDeleted={onDeleted}
+        showOwned={showOwned}
+      />
+    </>,
   );
   return { onChanged, onDeleted, onBack };
 }
@@ -127,18 +134,17 @@ describe("stray dates on single-sitting media", () => {
 });
 
 describe("rating", () => {
-  it("clicking a rating circle patches a numeric rating", async () => {
+  it("clicking a rating circle patches exactly that score — odd ones too", async () => {
     const user = userEvent.setup();
-    renderDetail({ medium: "film" });
-    // the rating circles are the buttons inside .rcircles
-    const circles = document.querySelectorAll(".rcirc");
-    expect(circles.length).toBe(5);
+    renderDetail({ medium: "game" });
+    // five circles, each split into an odd (left) and even (right) target
+    expect(document.querySelectorAll(".rcirc")).toHaveLength(5);
+    expect(document.querySelectorAll(".rcirc__half")).toHaveLength(10);
 
-    await user.click(circles[4] as HTMLElement);
+    await user.click(screen.getByRole("button", { name: "Rate 7 out of 10" }));
 
     expect(patchEntry).toHaveBeenCalledOnce();
-    const [, patch] = (patchEntry as any).mock.calls[0];
-    expect(typeof patch.rating).toBe("number");
+    expect(patchEntry).toHaveBeenCalledWith(base.id, { rating: 7 });
   });
 });
 
@@ -257,6 +263,19 @@ describe("logging something you got through over time", () => {
 
     expect(screen.getByLabelText("Date")).toBeInTheDocument();
     expect(screen.queryByLabelText("From")).not.toBeInTheDocument();
+  });
+
+  // A game is played over weeks (PROGRESS.game.single === false), so the log
+  // action must not be worded as one sitting — it used to read "Log a session"
+  // while the editor asked for a From → To stretch.
+  it("asks a game for playtime over a stretch, never a session", async () => {
+    const user = userEvent.setup();
+    renderDetail({ medium: "game" });
+    expect(screen.queryByText(/session/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Log playtime/ }));
+    expect(screen.getByLabelText("From")).toBeInTheDocument();
+    expect(screen.getByLabelText("To")).toBeInTheDocument();
   });
 
   it("asks a book for a From → To stretch", async () => {

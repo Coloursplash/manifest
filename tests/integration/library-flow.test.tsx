@@ -2,7 +2,7 @@
 // the pill, filter by medium (rail + digit hotkey), switch layout, open an entry
 // and change its status — asserting both the DOM and the fake backend's store.
 import { describe, it, expect } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { renderApp } from "./harness";
@@ -60,6 +60,60 @@ describe("library flow", () => {
 
     await user.keyboard("g");
     expect(await screen.findByText("Blade Runner")).toBeInTheDocument();
+  });
+
+  it("keeps the Sort control (and the rest of the rail) when the sidebar collapses", async () => {
+    const user = userEvent.setup();
+    renderApp({ entries: SEED });
+    await screen.findByText("Blade Runner");
+
+    // Expanded: the trigger reads out the current sort.
+    expect(screen.getByRole("button", { name: "Sort" })).toHaveTextContent("Name A–Z");
+    const keysBefore = document.querySelectorAll(".rail__scroll .railkey").length;
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    // Collapsed: same controls, same count — Sort just loses its label, so
+    // nothing above or below it shifts.
+    expect(document.querySelector(".rail--collapsed")).toBeInTheDocument();
+    expect(document.querySelectorAll(".rail__scroll .railkey")).toHaveLength(keysBefore);
+    const sort = screen.getByRole("button", { name: "Sort: Name A–Z" });
+    await user.click(sort);
+    await user.click(screen.getByRole("option", { name: "Highest rated" }));
+    expect(screen.getByRole("button", { name: "Sort: Highest rated" })).toBeInTheDocument();
+  });
+
+  it("resizes the sidebar and remembers the width", async () => {
+    renderApp({ entries: SEED });
+    await screen.findByText("Blade Runner");
+
+    const rail = document.querySelector(".rail") as HTMLElement;
+    expect(rail.style.width).toBe("178px");
+
+    const handle = screen.getByRole("separator", { name: /resize sidebar/i });
+    fireEvent.keyDown(handle, { key: "ArrowRight", shiftKey: true });
+
+    await waitFor(() => expect(rail.style.width).toBe("210px"));
+    expect(localStorage.getItem("manifest-rail-width")).toBe("210");
+  });
+
+  it("puts a page's actions in the header row, not a second bar", async () => {
+    const user = userEvent.setup();
+    renderApp({ entries: SEED });
+    await user.click(await screen.findByText("Blade Runner"));
+
+    // Both live inside the header alongside the search pill.
+    const header = document.querySelector(".omnibar") as HTMLElement;
+    const back = await screen.findByRole("button", { name: /Library/ });
+    const trash = screen.getByRole("button", { name: /Trash/ });
+    expect(header).toContainElement(back);
+    expect(header).toContainElement(trash);
+    expect(header).toContainElement(screen.getByRole("textbox", { name: /search library/i }));
+
+    // …and they clear out when the page does.
+    await user.click(back);
+    expect(await screen.findByText("Dune")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Trash/ })).not.toBeInTheDocument();
   });
 
   it("opens an entry and round-trips a status change to the backend", async () => {

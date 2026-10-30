@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { IconClose } from "./icons";
 
-/** A /10 score as five half-fillable circles: click the left half of a circle
- *  for the odd value, the right half for the even one. Hovering previews.
+/** A /10 score as five half-fillable circles: each circle is two real buttons,
+ *  the left half scoring odd, the right half even. Hovering previews.
  *
- *  Keyboard-operable too: pressing a circle takes its whole value (a keyboard
- *  can't aim at a half), ←/→ nudge by a half point, Backspace clears.
+ *  The halves are separate elements on purpose. They used to be one button per
+ *  circle that worked out which half you hit from `getBoundingClientRect` — a
+ *  measurement, so it couldn't be tested under jsdom (no layout) and odd scores
+ *  were unreachable whenever it read the wrong side. Ten explicit targets need
+ *  no arithmetic: whatever you click or press is the score you get.
  *
- *  Lives here rather than in EntryDetail because the log dialog rates a film at
+ *  One tab stop, not ten: the button holding the current score is the tabbable
+ *  one (the first when unset) and ←/→ walk a point at a time, taking focus with
+ *  them; Backspace clears.
+ *
+ *  Lives here rather than in EntryDetail because the log dialog rates a title at
  *  the moment you log it, the way Letterboxd does. */
 export function RatingCircles({
   value,
@@ -22,22 +29,17 @@ export function RatingCircles({
   const v = Math.round(value ?? 0);
   const [hover, setHover] = useState<number | null>(null);
   const shown = hover ?? v; // preview while hovering
-
-  // Which /10 value a click at this x lands on (left half = half point).
-  // A keyboard press reports no coordinates — `detail === 0` — and would
-  // otherwise always read as a left-half hit, so it takes the whole value.
-  function valueAt(i: number, e: React.MouseEvent<HTMLButtonElement>): number {
-    if (e.detail === 0) return i * 2;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const leftHalf = e.clientX - rect.left < rect.width / 2;
-    return (i - 1) * 2 + (leftHalf ? 1 : 2);
-  }
+  // Indexed by score − 1, so ←/→ can move focus to the score they just set.
+  const btns = useRef<(HTMLButtonElement | null)[]>([]);
+  const tabScore = v || 1;
 
   function onKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (step) {
       e.preventDefault();
-      onSet(Math.max(0, Math.min(10, v + step)) || null);
+      const next = Math.max(0, Math.min(10, v + step));
+      onSet(next || null); // stepping off the bottom clears, never scores 0
+      if (next) btns.current[next - 1]?.focus();
       return;
     }
     if (e.key === "Backspace" || e.key === "Delete") {
@@ -54,15 +56,26 @@ export function RatingCircles({
           const fill = Math.max(0, Math.min(1, (shown - (i - 1) * 2) / 2));
           const cls = fill >= 1 ? "rcirc--full" : fill > 0 ? "rcirc--half" : "";
           return (
-            <button
+            <span
               key={i}
-              type="button"
               className={`rcirc ${cls} ${hover !== null ? "rcirc--preview" : ""}`}
-              aria-label={`Rate ${(i - 1) * 2 + 2} out of 10`}
-              onMouseMove={(e) => setHover(valueAt(i, e))}
-              onClick={(e) => onSet(valueAt(i, e))}
-              onKeyDown={onKeyDown}
-            />
+            >
+              {[(i - 1) * 2 + 1, (i - 1) * 2 + 2].map((score) => (
+                <button
+                  key={score}
+                  ref={(el) => {
+                    btns.current[score - 1] = el;
+                  }}
+                  type="button"
+                  className="rcirc__half"
+                  tabIndex={score === tabScore ? 0 : -1}
+                  aria-label={`Rate ${score} out of 10`}
+                  onMouseEnter={() => setHover(score)}
+                  onClick={() => onSet(score)}
+                  onKeyDown={onKeyDown}
+                />
+              ))}
+            </span>
           );
         })}
       </div>

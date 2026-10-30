@@ -37,7 +37,11 @@ export const statusLabel = (medium: Medium, status: Status): string =>
 // Verbs for the notes log ("Log a watch/read/play/listen") and the repeat tag
 // (#rewatch / #reread / #replay / #relisten).
 export interface MediumVerbs {
-  /** Imperative, for "Log a ___". */
+  /** The whole imperative label for adding a log block — a phrase, not a noun
+   *  slotted into "Log a ___". English articles don't template, and the noun
+   *  that fits a medium isn't always a single sitting: a game is logged as a
+   *  stretch of playtime (see PROGRESS.single), so calling it "a session" said
+   *  the opposite of what the editor actually asks for. */
   log: string;
   /** Past tense, for "Just ___ it". */
   past: string;
@@ -46,13 +50,13 @@ export interface MediumVerbs {
 }
 
 export const VERBS: Record<Medium, MediumVerbs> = {
-  film: { log: "watch", past: "watched", repeat: "rewatch" },
-  tv: { log: "watch", past: "watched", repeat: "rewatch" },
-  anime: { log: "watch", past: "watched", repeat: "rewatch" },
-  book: { log: "read", past: "read", repeat: "reread" },
-  manga: { log: "read", past: "read", repeat: "reread" },
-  game: { log: "session", past: "played", repeat: "replay" },
-  music: { log: "listen", past: "listened", repeat: "relisten" },
+  film: { log: "Log a watch", past: "watched", repeat: "rewatch" },
+  tv: { log: "Log a watch", past: "watched", repeat: "rewatch" },
+  anime: { log: "Log a watch", past: "watched", repeat: "rewatch" },
+  book: { log: "Log a read", past: "read", repeat: "reread" },
+  manga: { log: "Log a read", past: "read", repeat: "reread" },
+  game: { log: "Log playtime", past: "played", repeat: "replay" },
+  music: { log: "Log a listen", past: "listened", repeat: "relisten" },
 };
 
 // Which statuses to surface as one-click "add" actions from search.

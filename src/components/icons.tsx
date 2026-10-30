@@ -130,6 +130,13 @@ export const IconTimeline = (p: P) => (
   </Svg>
 );
 
+// Descending bars — the sort order control.
+export const IconSort = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 6h16M4 12h10M4 18h5" />
+  </Svg>
+);
+
 // Panel-with-a-spine — the collapse-sidebar toggle.
 export const IconSidebar = (p: P) => (
   <Svg {...p}>

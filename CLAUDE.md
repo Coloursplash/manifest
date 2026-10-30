@@ -212,7 +212,9 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     existing medium-tab + search `filtered` list. Pure client-side, read-only over `notes`.
   - **Phase 2 done** — grouped, collapsible grid. `views/LibraryGrid.tsx` now buckets the
     (already filtered) entries by status into sections: In Progress (active+paused,
-    sub-grouped by medium, open by default) → Watchlist (want) → Done → Dropped, plus an
+    sub-grouped by medium, open by default — superseded below: every category now starts
+    collapsed as a shelf, and splits by medium only once expanded) → Watchlist (want) → Done →
+    Dropped, plus an
     Unsorted catch-all for statusless entries. Each section is a collapsible summary with a
     count; open/closed state persists in localStorage (`manifest-sections`). Empty sections
     are hidden.
@@ -392,7 +394,8 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     `lib/rail.ts` persists the flag, a toggle (`IconSidebar`) flips `rail--collapsed` (62px,
     labels/legends/spec/Sort hidden, brand → `M.`); every rail item now has an icon
     (`MEDIUM_ICON` map: `IconFilm/Tv/Anime/Book/Manga/Game/Music`), and Sort moved from the
-    header into the rail's View group (expanded only). Tests: OmniBox filter-results + `✓`,
+    header into the rail's View group (expanded only — superseded below: it now stays, icon-
+    only, when the rail collapses). Tests: OmniBox filter-results + `✓`,
     `lib/rail`. 121 frontend tests; `npm run build` clean.
   - **Add flow joined to the pill (one input, one menu).** The centred Add modal is gone from
     the main flow: `OmniBox` gains an **add mode** (third mode alongside filter/command) — the
@@ -500,6 +503,120 @@ Don't sprinkle extra accent colors "for variety" — restraint is the whole look
     tests.
 
 Known: user has reported bugs in the new views to be triaged.
+
+- **Floating pill: scroll masking (bugfix).** The 72px the pill needed was plain `padding-top`
+  on `.content` — transparent, so scrolled content slid up *around* the pill and reappeared
+  above/below it, and the detail page's sticky `Library/Trash` bar (`top: 0`) docked into that
+  unmasked strip. Now: a `--omni-band: 72px` token; `.omnibar::before` paints an opaque
+  full-width `var(--bg)` band (behind the pill via `z-index:-1` inside its stacking context) —
+  **solid, not a fade**: a fade over the last 14px still let a sliver of cover art show through
+  right above the docked bar, which is the whole complaint; the top room is a
+  scrolled-away `.content::before` spacer instead of container padding — with no padding on the
+  scroll container, a sticky child's offset is measured from the true top of the view, so
+  `.detail__bar { top: var(--omni-band) }` means exactly "docked under the pill" regardless of
+  how the engine treats scroll-container padding in the sticky rect. `.detail__cover` follows
+  (`calc(var(--omni-band) + 76px)`). CSS-only; jsdom has no layout, so it isn't test-covered.
+
+- **Resizable rail + a Sort control that stays put.** Three chrome bugs, one cause — the rail
+  was a fixed 178px box whose contents were free to overflow it or vanish from it.
+  - **Resizable.** `.rail` is now two boxes: the nav itself (fixed-width column, `position:
+    relative`) and an inner `.rail__scroll` that holds everything and does the scrolling — the
+    handle has to live *outside* the scrolling box or it scrolls away with the content.
+    `components/RailResizer.tsx` is the 9px grab strip on the right edge (pointer events, not
+    HTML5 DnD, same as `MediaChooser`); width comes from an inline style on `.rail`, persisted
+    by `lib/rail.ts` (`manifest-rail-width`, clamped 148–380, junk reads as the default).
+    It's a real `role="separator"`: ←/→ resize (⇧ = coarse), ⏎ toggles collapse, double-click
+    resets. **Collapse and resize are one gesture** — drag below `RAIL_SNAP` (120) and it snaps
+    to icons-only *without touching the stored width*, so dragging back out restores it; from
+    the keyboard, stepping left off the 148 floor collapses. Width is reported live during a
+    drag and only *persisted* on release. `body.is-resizing` holds the `col-resize` cursor when
+    the pointer outruns the strip. The strip takes `z-index: 16` itself (it overhangs 4px into
+    `.main`, so it must clear the pill's opaque band) — `.rail` must **not** take a z-index or
+    it would trap the Sort menu's `position: fixed` in its stacking context.
+  - **Sort keeps its slot when collapsed.** It used to be `display: none`, which removed a row
+    and reshuffled everything under it. `Dropdown` gained `compact` (icon-only trigger, via
+    `compactIcon` — there's no room for a glyph *and* a label, so the expanded trigger stays
+    text-only) and the collapsed rail dresses it as a `railkey`. With no visible value the
+    accessible name has to carry it (`"Sort: Recently finished"`). `.rail .brand` also got a
+    fixed 50px height so dropping the ｽﾍﾟｯｸ line on collapse doesn't shift the stack either.
+  - **Nothing runs off its box.** `.dropdown__value` and `.railkey__label` are `flex:1;
+    min-width:0` + ellipsis (full text stays in the tooltip and the open menu); the menu is
+    clamped to the window and scrolls (`place()` measures the room and flips the menu *above*
+    the trigger when the window is short); `.rail` is capped at `45vw`.
+  - **Dropdown is keyboard-operable** like the native `<select>` it replaces: focus stays on
+    the trigger and drives the list through `aria-activedescendant` (↑/↓/Home/End, ⏎, Esc,
+    ↑/↓ to open). An open menu `stopPropagation`s every key — focus is on a button, not a text
+    field, so `g`/`t`/digits would otherwise fire an app hotkey under the open list.
+  - **Collapsing may only remove text.** First pass still moved everything: the legends were
+    `display:none` (−18px per group), the collapsed rail had its own `gap`/`padding`, and each
+    control sized itself off its own font. Now the rail is measured in px tokens —
+    `--rail-key-h: 35px`, `--rail-key-px: 12px` (key inset), `--rail-pad-x: 14px` (rail inset)
+    — shared by `.railkey` *and* the Sort trigger; the collapsed rail changes **no** gap, no
+    padding and no height; the legend keeps its line box (`color: transparent`) but draws
+    **nothing** in its place — a hairline there landed just under the brand's own rule and read
+    as a double line at the top of the rail, and collapsing may only ever *remove* something;
+    `.rail .brand` is a fixed 50px, top-aligned, so dropping
+    the ｽﾍﾟｯｸ line doesn't lift the wordmark. Collapsed width is therefore **71px**, not a round
+    number: rail inset + key inset + border + a 16px glyph — an expanded key trimmed to its
+    icon, so the icons don't move sideways either. `RAIL_COLLAPSED_WIDTH` mirrors it.
+    Verified by rendering `global.css` in headless Firefox and diffing every row's top/height/
+    icon-x between the two states: **0.0px drift** (jsdom can't do this — no layout engine).
+  - **One cover size everywhere.** A collapsed section renders a flex `.shelf` (hard 150px
+    cards) and an expanded one a `.grid` (`minmax(152px, 1fr)`), so *opening a section resized
+    every cover in it*. CSS can't derive one from the other — a flex row can't resolve a grid
+    track — so `LibraryGrid` measures its own column (`ResizeObserver` on `.sections`, callback
+    ref so it also attaches when the grid appears after an empty library), resolves what
+    auto-fill would give (`cardWidth()`, exported + unit-tested) and publishes it as `--card-w`.
+    Both layouts use fixed `var(--card-w, …)` tracks with the old values as the pre-measurement
+    fallback. Same width, same 22px gap → a card sits on the same x whether its section is open
+    or shut, and the row still fills the column.
+  - `src/test/setup.ts` now polyfills `PointerEvent` + pointer capture: jsdom has neither, and
+    without the constructor `fireEvent.pointerDown` silently degrades to a bare `Event` and
+    drops `button`/`clientX`, so pointer-driven UI looks inert under test. Tests: `RailResizer`
+    (9 — drag/clamp/snap/keyboard/reset), `Dropdown` keyboard + compact, `lib/rail` width,
+    `cardWidth` (fills the row, never below the minimum), `Rating` (odd/even targets, hover
+    preview, one tab stop), the game log wording, and three passes through the real `<App />`
+    (collapsing keeps the rail's key count and Sort still works; a keyboard resize round-trips
+    to `localStorage`; a page's Back/Trash land in the header and clear out on leaving).
+    217 frontend tests.
+  - **One header row.** The detail and review pages each stacked their own bar under the
+    floating pill (`.detail__bar`, sticky at `top: var(--omni-band)`) — two rows of chrome for
+    one page. `.omnibar` is now a three-column grid (`minmax(0,1fr) auto minmax(0,1fr)`, gutter
+    matching `.content`) so the pill stays dead-centre whatever the sides hold, and
+    `components/HeaderSlot.tsx` portals a view's own actions into the left/right slots
+    (`HEADER_SLOT_ID`). A **portal, not props**: the markup belongs to the header but the state
+    belongs to the view — Trash owns a confirm, a busy flag and an error, and lifting all that
+    into `App` to move a button would be the worse trade. The host is App's element, mounted in
+    the same commit, so it's looked up in a *layout* effect (before paint, no late flash).
+    Empty slots are `pointer-events: none` so the strip beside the pill isn't a dead zone;
+    `.detail__cover` now only has to clear the band itself. Standalone view tests must stand up
+    the two host divs (see `EntryDetail.test.tsx`).
+  - **Every score is a real target (rating fix).** `RatingCircles` was one button per circle
+    that worked out which half you hit from `getBoundingClientRect` — so odd scores were
+    unreachable whenever that read the wrong side, and jsdom (no layout) could never test it:
+    the suite only covered the keyboard path, which deliberately took whole circles. Now each
+    circle contains two transparent buttons, left = odd, right = even, with the visual circle
+    around them. No arithmetic, ten explicit targets, and the mouse path is finally unit-tested.
+    Keyboard stays one tab stop (roving `tabIndex` on the current score; ←/→ nudge a point and
+    carry focus with them; Backspace clears).
+  - **`VERBS[medium].log` is a whole phrase now**, not a noun in "Log a ___". English articles
+    don't template, and the noun that fits isn't always a single sitting: games read **"Log
+    playtime"** — "Log a session" said one sitting while the editor (correctly) asked for a
+    From → To stretch, which is the film-shaped mistake wearing game clothes. Others: "Log a
+    watch" (film/tv/anime), "Log a read" (book/manga), "Log a listen" (music).
+  - **Per-medium grouping is one rule now.** `In Progress` was the only category carrying
+    `byMedium: true`, so it split into Films / Games / … rows while Done, Backlog, Wishlist and
+    Dropped stayed a mixed pile — defensible (working list vs archive) but it reads as
+    arbitrary. The flag is gone: **collapsed = one mixed shelf, expanded = a grid per medium**,
+    for every category. Collapsed answers "what's in here?" in one row whatever the medium;
+    expanding is when you're actually looking, and that's when the split earns its sub-headers
+    (which still hide themselves when only one medium is present — including whenever the rail
+    filters to one). `ByMedium` lost its `expanded`/`onExpand` props and is now just the
+    expanded renderer.
+  - **Checking CSS geometry:** headless Firefox renders `global.css` against a hand-built
+    markup probe and prints measured rects (`firefox --headless --screenshot page.html`, read
+    the PNG). Worth reaching for whenever a complaint is "things move / resize" — jsdom has no
+    layout, so those bugs are invisible to the test suite.
 
 - **Logging over time (spans).** The fix for the film-shaped log: you don't watch a season on
   a Tuesday. A log block can now carry a **span**, so the question the editor asks matches the

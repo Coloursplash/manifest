@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Cover } from "../components/Cover";
+import { HeaderSlot } from "../components/HeaderSlot";
 import { NoteEditor, type NoteDraft } from "../components/NoteEditor";
 import { RatingCircles } from "../components/Rating";
 import { IconBack, IconCheck, IconClose, IconEdit, IconPlus, IconTrash } from "../components/icons";
@@ -121,15 +122,17 @@ export function EntryDetail({
 
   return (
     <div>
-      <div className="detail__bar">
+      {/* Page actions ride in the app header, on the same row as the search. */}
+      <HeaderSlot side="left">
         <button className="btn btn--ghost" onClick={onBack}>
           <IconBack size={16} /> Library
         </button>
-        <div className="topbar__spacer" />
+      </HeaderSlot>
+      <HeaderSlot side="right">
         <button className="btn btn--ghost btn--dim" onClick={remove} disabled={busy}>
           <IconTrash size={16} /> Trash
         </button>
-      </div>
+      </HeaderSlot>
 
       <div className="detail">
         <div className="detail__cover">
@@ -326,7 +329,7 @@ export function EntryDetail({
               />
             ) : (
               <button className="btn btn--accent" onClick={() => setComposing(true)}>
-                <IconPlus size={16} /> Log a {logVerb}
+                <IconPlus size={16} /> {logVerb}
               </button>
             )}
 

@@ -673,7 +673,7 @@ function LogDialog({
           <Cover url={candidate.cover} title={candidate.title} />
         </div>
         <div className="stack" style={{ gap: 4 }}>
-          <div className="label">Log a {verbs.log}</div>
+          <div className="label">{verbs.log}</div>
           <div className="logdialog__title">
             {candidate.title}
             {candidate.year ? ` (${candidate.year})` : ""}

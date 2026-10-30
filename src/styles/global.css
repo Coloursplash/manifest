@@ -30,6 +30,16 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --r: 2px;
   --control-h: 40px; /* shared height for header controls, so the row lines up */
+  /* Height of the strip the floating search pill occupies (16 top + control + 16).
+     Content scrolls *under* an opaque band this tall, and anything sticky inside
+     .content docks at its bottom edge. */
+  --omni-band: 72px;
+  /* Rail metrics, in px on purpose: every row must be the same height and every
+     icon must sit at the same x whether the rail is expanded or collapsed, and
+     em-based padding drifts with each control's font. */
+  --rail-key-h: 35px;
+  --rail-key-px: 12px; /* inset inside a key, to the icon */
+  --rail-pad-x: 14px; /* inset of the rail's own scroll box */
 
   font-family: var(--sans);
   font-size: 16px;
@@ -428,9 +438,11 @@ input[type="date"] {
   min-width: 0;
   height: 100%;
 }
-/* --- floating command/search pill --- */
-/* Sits centred over the content (no header bar). `.content` reserves top room
-   so nothing hides beneath it at the top of the scroll. */
+/* --- floating header: page actions | search pill | page actions --- */
+/* The app's only header row. `.content` reserves top room so nothing hides
+   beneath it at the top of the scroll. Three columns with equal-weight sides,
+   so the pill sits dead-centre however much a page puts in its slots — a page
+   with actions (detail, review) fills them instead of stacking a second bar. */
 .omnibar {
   position: absolute;
   top: 16px;
@@ -438,14 +450,55 @@ input[type="date"] {
   right: 0;
   /* below the modal scrim (z 20) so Add/Settings cover it */
   z-index: 15;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 0 22px; /* same gutter as .content, so Back lines up with the grid */
+  /* Centre with the grid, NOT a transform — a transformed ancestor would become
+     the containing block for the dropdown's position:fixed and shove it
+     off-centre. The bar ignores pointer events so content behind it stays live. */
+  pointer-events: none;
+}
+.omnibar__centre {
   display: flex;
   align-items: flex-start;
-  justify-content: center;
   gap: 10px;
-  /* Centre via flex, NOT transform — a transformed ancestor would become the
-     containing block for the dropdown's position:fixed and shove it off-centre.
-     The bar itself ignores pointer events so content behind the gaps stays live. */
+}
+/* Page-action slots (see components/HeaderSlot.tsx). Empty on the library —
+   and click-through when empty, so the strip beside the pill isn't a dead zone. */
+.omnibar__slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
   pointer-events: none;
+}
+.omnibar__slot > * {
+  pointer-events: auto;
+}
+.omnibar__slot--right {
+  justify-content: flex-end;
+}
+.omnibar__slot .btn {
+  height: var(--control-h);
+  white-space: nowrap;
+}
+/* Opaque backdrop for the whole strip. Without it the pill floats over live,
+   unmasked content: scrolled cards slide up around the sides of the pill and
+   into the gap above it. Sits behind the pill (own stacking context, z:-1) but
+   above .content. Solid, not a fade — a fade still shows the content through it,
+   and its bottom edge lines up exactly with where anything sticky docks. */
+.omnibar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -16px;
+  left: 0;
+  right: 0;
+  height: var(--omni-band);
+  background: var(--bg);
 }
 .omnibar > * {
   pointer-events: auto;
@@ -472,17 +525,74 @@ input[type="date"] {
 }
 
 /* --- left function rail --- */
+/* Two boxes: the rail itself (fixed-width column, holds the resize handle at
+   its edge) and an inner scroller. The handle has to sit outside the scrolling
+   box or it would scroll away with the content. Width comes from an inline
+   style (drag-resized, persisted); the value here is only the fallback. */
 .rail {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 22px;
   width: 178px;
+  /* Whatever width was dragged, the library still gets most of the window. */
+  max-width: 45vw;
   flex: none;
-  padding: 18px 14px;
   background: var(--panel);
   border-right: 2px solid var(--line-2);
   border-top: 3px solid var(--accent);
+}
+.rail__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  flex: 1;
+  min-height: 0;
+  padding: 18px var(--rail-pad-x);
   overflow-y: auto;
+  overflow-x: hidden;
+}
+/* Drag strip on the right edge. Wider than it looks (easy to grab), showing a
+   hairline only on hover/drag so it doesn't add a second border to the chrome. */
+.rail__resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 9px;
+  /* The strip overhangs into .main, so it has to clear the floating pill's
+     opaque band (15). Stays under the modal scrim (20). Note .rail must NOT
+     take a z-index of its own — that would trap the Sort menu (fixed, 41) in
+     the rail's stacking context. */
+  z-index: 16;
+  cursor: col-resize;
+  touch-action: none;
+}
+.rail__resize::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  background: transparent;
+  transition: background 0.1s ease;
+}
+.rail__resize:hover::before,
+.rail__resize:focus-visible::before,
+.rail__resize.is-active::before {
+  background: var(--accent);
+}
+.rail__resize:focus-visible {
+  outline: none;
+}
+/* Keep the col-resize cursor (and kill text selection) for the whole drag, even
+   when the pointer outruns the 9px strip. */
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.is-resizing * {
+  cursor: col-resize !important;
 }
 .rail__group {
   display: flex;
@@ -490,23 +600,30 @@ input[type="date"] {
   gap: 5px;
 }
 .rail__legend {
+  position: relative;
   font-family: var(--mono);
   font-size: 0.58rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.22em;
   color: var(--muted);
-  padding: 0 0.9em 4px;
+  padding: 0 var(--rail-pad-x) 4px;
+  overflow: hidden;
 }
 .rail__spacer {
   flex: 1;
 }
-/* Function keys: full-width, left-aligned, chunky. Active = filled accent. */
+/* Function keys: full-width, left-aligned, chunky. Active = filled accent.
+   Height and horizontal padding are fixed in px, not ems — every row in the
+   rail must be exactly the same height whatever its font, or collapsing (which
+   changes what's rendered inside) would move everything below it. */
 .railkey {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
+  height: var(--rail-key-h);
+  flex: none;
   font: inherit;
   font-size: 0.74rem;
   font-weight: 700;
@@ -517,7 +634,7 @@ input[type="date"] {
   background: transparent;
   border: 1.5px solid transparent;
   border-radius: var(--r);
-  padding: 0.62em 0.9em;
+  padding: 0 var(--rail-key-px);
   cursor: pointer;
   transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
   user-select: none;
@@ -543,11 +660,16 @@ input[type="date"] {
   flex: none;
   color: var(--faint);
 }
+/* Narrow the rail and the label ellipsises — it must never run past the key. */
 .railkey__label {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* Sort control docked in the View group (expanded rail only). */
+/* Sort control docked in the View group — same box as the keys above it, so the
+   group reads as one stack and nothing moves when it swaps to its icon. */
 .rail-sort {
   padding-top: 2px;
 }
@@ -557,38 +679,52 @@ input[type="date"] {
 }
 .rail-sort .dropdown__btn {
   justify-content: flex-start;
+  min-width: 0;
+  height: var(--rail-key-h);
+  padding: 0 var(--rail-key-px);
 }
 
 /* --- collapsed (icons-only) rail --- */
+/* Collapsing may only remove *text*. Every box keeps its height, every gap and
+   every horizontal inset stays put, so each icon lands on exactly the pixel it
+   occupied while expanded — the width shrinks around them and nothing jumps.
+   That's also where the 71px comes from: pad + key padding + border + a 16px
+   icon, i.e. an expanded key trimmed to its glyph. Keep RAIL_COLLAPSED_WIDTH
+   in src/lib/rail.ts in step with it. */
 .brand__mark {
   display: none;
 }
 .rail--collapsed {
-  width: 62px;
-  gap: 16px;
-  padding: 18px 8px;
-  align-items: stretch;
-}
-.rail--collapsed .railkey {
-  justify-content: center;
-  gap: 0;
-  padding: 0.62em 0;
+  width: 71px;
 }
 .rail--collapsed .railkey__label,
-.rail--collapsed .rail__legend,
 .rail--collapsed .brand__spec,
-.rail--collapsed .brand__full,
-.rail--collapsed .rail-sort {
+.rail--collapsed .brand__full {
   display: none;
 }
 .rail--collapsed .brand__mark {
   display: inline;
 }
-.rail--collapsed .brand {
-  align-items: center;
-  padding: 0 0 14px;
+/* The legend keeps its line box (`display:none` would shorten the group by ~18px
+   and shove the stack up) — the text just goes invisible. Nothing is drawn in
+   its place: a rule here would sit right under the brand's, reading as a double
+   line at the top of the rail, and collapsing is only ever allowed to *remove*. */
+.rail--collapsed .rail__legend {
+  color: transparent;
 }
-
+/* Sort keeps its slot too — icon only, dressed as a rail key. */
+.rail--collapsed .rail-sort .dropdown__btn {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+}
+.rail--collapsed .rail-sort .dropdown__btn--compact {
+  justify-content: flex-start; /* the icon sits where every other icon sits */
+}
+.rail--collapsed .rail-sort .dropdown__btn:hover {
+  color: var(--fg);
+  border-color: var(--line-2);
+}
 /* --- brand plate --- */
 .brand {
   display: flex;
@@ -596,8 +732,13 @@ input[type="date"] {
   gap: 2px;
   line-height: 1;
 }
-/* In the rail the plate sits stacked at the top with a rule under it. */
+/* In the rail the plate sits stacked at the top with a rule under it. Fixed
+   height + top alignment so that dropping the ｽﾍﾟｯｸ line on collapse leaves the
+   wordmark — and the rule under it, and everything below — exactly where it was. */
 .rail .brand {
+  flex: none;
+  height: 50px;
+  justify-content: flex-start;
   padding: 0 0.4em 16px;
   border-bottom: 2px solid var(--line);
 }
@@ -638,17 +779,37 @@ input[type="date"] {
 .dropdown__btn:hover {
   border-color: var(--accent);
 }
+.dropdown__btn--compact {
+  justify-content: center;
+  gap: 0;
+}
+.dropdown__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--muted);
+}
 .dropdown__leading {
+  flex: none;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 0.62rem;
   font-weight: 700;
   color: var(--muted);
 }
+/* Truncate — the trigger can be as narrow as the rail is dragged, and a long
+   option ("Recently finished") must not spill out of it. The full label stays
+   available in the tooltip and in the open menu. */
 .dropdown__value {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 }
 .dropdown__caret {
+  flex: none;
   color: var(--muted);
   font-size: 0.7rem;
   transition: transform 0.12s ease;
@@ -664,7 +825,10 @@ input[type="date"] {
 .dropdown__menu {
   position: fixed;
   z-index: 41;
-  max-width: 360px;
+  /* Never wider than the window, never taller than the room measured for it
+     (see place() in Dropdown.tsx) — a long list scrolls instead of running off. */
+  max-width: min(360px, calc(100vw - 24px));
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -691,7 +855,8 @@ input[type="date"] {
   padding: 7px 9px;
   cursor: pointer;
 }
-.dropdown__item:hover {
+/* One highlight, driven by the keyboard cursor — hover just moves the cursor. */
+.dropdown__item.is-active {
   background: var(--panel-2);
 }
 .dropdown__item.is-selected {
@@ -986,9 +1151,18 @@ body.is-reordering {
   flex: 1;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  /* extra top room so content clears the floating search pill */
-  padding: 72px 22px 56px;
+  padding: 0 22px 56px;
   background: var(--bg);
+}
+/* The room the floating pill needs is a scrolled-away spacer, NOT padding on the
+   scroll container: padding-top would move the scrollport's top edge, and then
+   `top: 0` on a sticky child (the detail bar) docks somewhere the band can't
+   mask. With no top padding, sticky offsets are measured from the very top of
+   the view, so `top: var(--omni-band)` means exactly "just under the pill". */
+.content::before {
+  content: "";
+  display: block;
+  height: var(--omni-band);
 }
 
 /* Themed scrollbars — a slim, rounded thumb in the palette over a transparent
@@ -1025,9 +1199,14 @@ body.is-reordering {
 }
 
 /* --- library grid --- */
+/* Fixed tracks of --card-w (measured by LibraryGrid so a row still fills the
+   width exactly) rather than minmax(…, 1fr): the shelf a section collapses to
+   is a flex row and can't resolve a 1fr track, so the two layouts sized their
+   covers differently and expanding a section resized every cover in it. The
+   minmax is the pre-measurement fallback. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+  grid-template-columns: repeat(auto-fill, var(--card-w, minmax(152px, 1fr)));
   gap: 22px;
 }
 .card {
@@ -1288,22 +1467,11 @@ body.is-reordering {
   max-width: 940px;
   margin: 0 auto;
 }
-/* sticky action bar so Library/Trash stay reachable while scrolling */
-.detail__bar {
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--bg);
-  padding: 6px 0 12px;
-  margin-bottom: 16px;
-  border-bottom: 1.5px solid var(--line);
-}
+/* Library/Trash live in the app header now (HeaderSlot), not on a second row
+   here — so the cover only has to clear the header band itself. */
 .detail__cover {
   position: sticky;
-  top: 76px;
+  top: calc(var(--omni-band) + 12px);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1488,15 +1656,31 @@ body.is-reordering {
   display: flex;
   gap: 8px;
 }
+/* The circle is just the paint; the two buttons inside it are the hit targets
+   (left half = odd score, right half = even). See components/Rating.tsx. */
 .rcirc {
+  display: flex;
   width: 24px;
   height: 24px;
   padding: 0;
   border-radius: 999px;
   border: 2px solid var(--line-2);
   background: transparent;
-  cursor: pointer;
+  overflow: hidden;
   transition: transform 0.06s ease, border-color 0.1s ease;
+}
+.rcirc__half {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.rcirc__half:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+  border-radius: 999px;
 }
 .rcirc:hover {
   transform: scale(1.12);
@@ -1819,13 +2003,14 @@ body.is-reordering {
   scroll-snap-type: x proximity;
   overscroll-behavior-x: contain;
 }
+/* Same width as a .grid track — see the note there. */
 .shelf .card {
-  flex: 0 0 150px;
-  width: 150px;
+  flex: 0 0 var(--card-w, 150px);
+  width: var(--card-w, 150px);
   scroll-snap-align: start;
 }
 .shelf__more {
-  flex: 0 0 150px;
+  flex: 0 0 var(--card-w, 150px);
   aspect-ratio: 2 / 3;
   display: flex;
   flex-direction: column;

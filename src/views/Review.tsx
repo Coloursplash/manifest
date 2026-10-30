@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { Cover } from "../components/Cover";
+import { HeaderSlot } from "../components/HeaderSlot";
 import { IconBack } from "../components/icons";
 import { MEDIA, MEDIUM_LABEL, type Entry } from "../lib/types";
 import { buildTimeline } from "../lib/timeline";
@@ -99,9 +100,12 @@ export function Review({
 
   return (
     <div className="review">
-      <button className="btn btn--ghost btn--sm" onClick={onBack}>
-        <IconBack size={14} /> Back
-      </button>
+      {/* Rides in the app header next to the search, not on a row of its own. */}
+      <HeaderSlot side="left">
+        <button className="btn btn--ghost" onClick={onBack}>
+          <IconBack size={16} /> Library
+        </button>
+      </HeaderSlot>
 
       <h1 className="review__title">
         {periodLabel} <span>In Review</span>

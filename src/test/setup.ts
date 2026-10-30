@@ -15,6 +15,28 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
 
+// jsdom ships no PointerEvent and no pointer capture. Without the constructor,
+// `fireEvent.pointerDown` silently degrades to a bare Event and drops `button`
+// and `clientX`, so any pointer-driven UI (rail resize, MediaChooser reorder)
+// looks inert under test. MouseEvent already carries everything we read.
+if (!("PointerEvent" in globalThis)) {
+  class PointerEventPolyfill extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 1;
+      this.pointerType = init.pointerType ?? "mouse";
+    }
+  }
+  (globalThis as any).PointerEvent = PointerEventPolyfill;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+  Element.prototype.hasPointerCapture = () => false;
+}
+
 // Unmount React trees and reset the DOM/localStorage between tests.
 afterEach(() => {
   cleanup();

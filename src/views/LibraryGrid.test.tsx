@@ -2,12 +2,42 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { LibraryGrid } from "./LibraryGrid";
+import { LibraryGrid, cardWidth } from "./LibraryGrid";
 import { makeEntry } from "../test/entry";
+
+// Mirrors the CSS the widths are computed against.
+const MIN = 152;
+const GAP = 22;
 
 // A card renders its title twice (the Cover fallback + the caption); scope title
 // lookups to the caption element so they resolve to one node.
 const cardTitle = (t: string) => screen.queryByText(t, { selector: ".card__title" });
+
+// jsdom has no layout, so the measured `--card-w` never lands in these tests —
+// exercise the arithmetic directly. This is the number a shelf and an expanded
+// grid now share, which is the whole point: opening a section must not resize
+// a single cover.
+describe("cardWidth", () => {
+  it("matches what auto-fill would do: as many min-width cards as fit", () => {
+    // 1200 = 7 columns (7×152 + 6×22 = 1196), the slack shared out
+    expect(cardWidth(1200)).toBe(Math.floor((1200 - 6 * GAP) / 7));
+    expect(cardWidth(1200)).toBeGreaterThanOrEqual(MIN);
+  });
+
+  it("never overflows the row, and never drops below the minimum", () => {
+    for (let w = MIN; w <= 2400; w += 7) {
+      const card = cardWidth(w);
+      const cols = Math.max(1, Math.floor((w + GAP) / (MIN + GAP)));
+      expect(card * cols + (cols - 1) * GAP).toBeLessThanOrEqual(w);
+      if (w >= MIN) expect(card).toBeGreaterThanOrEqual(MIN);
+    }
+  });
+
+  it("gives one full-width card when only one fits, and copes with no width", () => {
+    expect(cardWidth(300)).toBe(300);
+    expect(cardWidth(0)).toBe(MIN); // pre-layout / jsdom
+  });
+});
 
 describe("LibraryGrid", () => {
   it("shows the empty hint when there are no entries", () => {
@@ -78,6 +108,74 @@ describe("LibraryGrid", () => {
     );
     expect(document.querySelector(".shelf")).toBeTruthy();
     expect(document.querySelector(".grid")).toBeFalsy();
+  });
+
+  // One rule for every category, In Progress included: mixed while collapsed,
+  // split by medium once you open it.
+  describe("per-medium grouping", () => {
+    const MIXED = [
+      makeEntry({ slug: "a-film", title: "A Film", medium: "film", status: "done" }),
+      makeEntry({ slug: "a-game", title: "A Game", medium: "game", status: "done" }),
+      makeEntry({ slug: "b-film", title: "B Film", medium: "film", status: "done" }),
+    ];
+
+    it("collapses to one mixed shelf, no sub-headers", () => {
+      render(<LibraryGrid entries={MIXED} onOpen={vi.fn()} emptyHint="" />);
+
+      expect(document.querySelectorAll(".shelf")).toHaveLength(1);
+      expect(document.querySelector(".lib-subhead")).toBeFalsy();
+      expect(cardTitle("A Film")).toBeInTheDocument();
+      expect(cardTitle("A Game")).toBeInTheDocument();
+    });
+
+    it("splits into a grid per medium, in canonical order, when expanded", async () => {
+      const user = userEvent.setup();
+      render(<LibraryGrid entries={MIXED} onOpen={vi.fn()} emptyHint="" />);
+      await user.click(screen.getByRole("button", { name: /Done/ }));
+
+      const heads = [...document.querySelectorAll(".lib-subhead")].map((n) => n.textContent);
+      expect(heads).toEqual(["Films", "Games"]); // MEDIA order, not entry order
+      expect(document.querySelectorAll(".grid")).toHaveLength(2);
+      expect(document.querySelectorAll(".shelf")).toHaveLength(0);
+    });
+
+    it("skips the sub-header when the category holds one medium", async () => {
+      const user = userEvent.setup();
+      render(
+        <LibraryGrid
+          entries={[makeEntry({ title: "Only Film", medium: "film", status: "done" })]}
+          onOpen={vi.fn()}
+          emptyHint=""
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: /Done/ }));
+
+      expect(document.querySelector(".lib-subhead")).toBeFalsy();
+      expect(document.querySelectorAll(".grid")).toHaveLength(1);
+    });
+
+    it("applies to In Progress too — it isn't special any more", async () => {
+      const user = userEvent.setup();
+      render(
+        <LibraryGrid
+          entries={[
+            makeEntry({ slug: "f", title: "Film Now", medium: "film", status: "active" }),
+            makeEntry({ slug: "g", title: "Game Now", medium: "game", status: "active" }),
+          ]}
+          onOpen={vi.fn()}
+          emptyHint=""
+        />,
+      );
+      // collapsed: one shelf for the whole category
+      expect(document.querySelectorAll(".shelf")).toHaveLength(1);
+      expect(document.querySelector(".lib-subhead")).toBeFalsy();
+
+      await user.click(screen.getByRole("button", { name: /In Progress/ }));
+      expect([...document.querySelectorAll(".lib-subhead")].map((n) => n.textContent)).toEqual([
+        "Films",
+        "Games",
+      ]);
+    });
   });
 
   it("clicking a section header expands the shelf into a grid and persists", async () => {
