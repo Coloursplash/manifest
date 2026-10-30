@@ -2342,91 +2342,9 @@ body.is-reordering {
   line-height: 0.9rem;
 }
 
-/* --- command palette (⌘K) --------------------------------------------------
-   A generic overlay: hairline panel, one accent, mono affordances. Sits above
-   modals and dropdowns. See components/CommandPalette.tsx. */
-.cmdk__scrim {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: grid;
-  place-items: start center;
-  padding: 12vh 16px 16px;
-  z-index: 60;
-}
-.cmdk {
-  width: min(640px, 100%);
-  max-height: 68vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 2px solid var(--line-2);
-  border-top: 3px solid var(--accent);
-  border-radius: var(--r);
-  box-shadow: 10px 10px 0 var(--hard);
-  overflow: hidden;
-}
-.cmdk__head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 15px;
-  border-bottom: 2px solid var(--line);
-}
-.cmdk__icon {
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  flex: none;
-}
-.cmdk__input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--fg);
-  font: inherit;
-  font-size: 0.98rem;
-}
-.cmdk__input::placeholder {
-  color: var(--faint);
-}
-.cmdk__esc {
-  font-family: var(--mono);
-  font-size: 0.64rem;
-  color: var(--faint);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 2px 6px;
-  flex: none;
-}
-.cmdk__crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--accent-ink);
-  background: var(--accent);
-  border: none;
-  border-radius: var(--r);
-  padding: 4px 8px;
-  cursor: pointer;
-}
-.cmdk__crumb-x {
-  font-size: 0.9rem;
-  line-height: 1;
-  opacity: 0.8;
-}
-
-.cmdk__list {
-  overflow-y: auto;
-  padding: 6px;
-}
+/* --- command rows -----------------------------------------------------------
+   The rows of the OmniBox dropdown (components/OmniBox.tsx): search results
+   and `>` commands. Hairline panel, one accent, mono affordances. */
 .cmdk__group {
   padding: 2px 0;
 }
@@ -2510,14 +2428,6 @@ body.is-reordering {
 }
 .cmdk__spacer {
   flex: 1;
-}
-.cmdk__chev {
-  color: var(--muted);
-  font-size: 1rem;
-  flex: none;
-}
-.cmdk__item.is-active .cmdk__chev {
-  color: var(--accent-ink);
 }
 .cmdk__hint {
   font-family: var(--mono);

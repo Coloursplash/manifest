@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { fuzzyMatch } from "../lib/fuzzy";
-import type { Command } from "./CommandPalette";
+import type { Command } from "../lib/paletteCommands";
 import { IconCheck, IconClose, IconPlus, IconSearch } from "./icons";
 
 // The one floating field that unifies every entry point, VSCode-style:

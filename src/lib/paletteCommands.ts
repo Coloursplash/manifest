@@ -1,4 +1,5 @@
-import type { Command } from "../components/CommandPalette";
+import type { ReactNode } from "react";
+
 import {
   IconPlus,
   IconSettings,
@@ -15,6 +16,26 @@ import { SORT_KEYS, SORT_LABEL, type SortKey } from "./sort";
 import type { Layout } from "./layout";
 import type { Theme } from "./theme";
 import { MEDIUM_LABEL, statusLabel, type Entry, type Medium } from "./types";
+
+/** One row of the pill's command (`>`) and search dropdowns. */
+export interface Command {
+  id: string;
+  /** Primary text; also the main thing matched against. */
+  title: string;
+  /** Secondary text shown after the title. */
+  subtitle?: string;
+  /** Section heading. Groups render in first-seen order. */
+  group?: string;
+  /** Extra text folded into the search haystack (aliases, synonyms). */
+  keywords?: string;
+  icon?: ReactNode;
+  /** Right-aligned hint, e.g. a shortcut. */
+  hint?: string;
+  /** Marks the current choice (view/sort/filter) — rendered as a leading ✓. */
+  active?: boolean;
+  disabled?: boolean;
+  perform?: () => void;
+}
 
 // Builds the manifest command list from the current app state + handlers. The
 // list is flat (no submenus) — that's the right shape for an inline "type >"

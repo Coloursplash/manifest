@@ -26,7 +26,8 @@ import {
 } from "./lib/media";
 import { getOwnedMedia, toggleOwnedMedium } from "./lib/ownership";
 import { getLayout, setLayout, type Layout } from "./lib/layout";
-import { getSort, setSort, sortEntries, SORT_KEYS, SORT_LABEL, type SortKey } from "./lib/sort";
+import { getSort, setSort, sortEntries, type SortKey } from "./lib/sort";
+import { filterEntries } from "./lib/filter";
 import { buildTimeline } from "./lib/timeline";
 import { refreshEntry } from "./lib/refresh";
 import { fuzzyRank } from "./lib/fuzzy";
@@ -36,21 +37,11 @@ import {
   setRailCollapsed,
   setRailWidth,
 } from "./lib/rail";
-import {
-  IconGrid,
-  IconPlus,
-  IconSettings,
-  IconSidebar,
-  IconSort,
-  IconTimeline,
-  MEDIUM_ICON,
-} from "./components/icons";
-import type { Command } from "./components/CommandPalette";
-import { Dropdown } from "./components/Dropdown";
+import { IconPlus, MEDIUM_ICON } from "./components/icons";
 import { HEADER_SLOT_ID } from "./components/HeaderSlot";
-import { RailResizer } from "./components/RailResizer";
+import { Rail } from "./components/Rail";
 import { OmniBox, type OmniBoxHandle } from "./components/OmniBox";
-import { buildCommands } from "./lib/paletteCommands";
+import { buildCommands, type Command } from "./lib/paletteCommands";
 import { useHotkey, useHotkeys } from "./lib/useHotkey";
 import { Onboarding } from "./views/Onboarding";
 import { LibraryGrid } from "./views/LibraryGrid";
@@ -247,22 +238,10 @@ export default function App() {
     }
   }, [view, entries]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return entries.filter((e) => {
-      if (filterMedium && e.medium !== filterMedium) return false;
-      if (!q) return true;
-      const hay = [
-        e.title,
-        e.year ?? "",
-        ...(e.tags ?? []),
-        ...Object.values(e.extra ?? {}).map((v) => `${v}`),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [entries, filterMedium, query]);
+  const filtered = useMemo(
+    () => filterEntries(entries, filterMedium, query),
+    [entries, filterMedium, query],
+  );
 
   const sorted = useMemo(() => sortEntries(filtered, sort), [filtered, sort]);
   const timelineEvents = useMemo(() => buildTimeline(filtered), [filtered]);
@@ -433,114 +412,23 @@ export default function App() {
 
   return (
     <div className="app">
-      <nav
-        className={`rail ${railCollapsed ? "rail--collapsed" : ""}`}
-        style={railCollapsed ? undefined : { width: railWidth }}
-      >
-        <div className="rail__scroll">
-          <div className="brand">
-            <div className="brand__name">
-              <span className="brand__full">MANIFEST</span>
-              <span className="brand__mark">M</span>
-              <span className="dotmark">.</span>
-            </div>
-            <div className="brand__spec">マニフェスト</div>
-          </div>
-
-          <div className="rail__group">
-            <div className="rail__legend">Library</div>
-            <button
-              className={`railkey railkey--icon ${onLibrary && filterMedium === null ? "railkey--on" : ""}`}
-              onClick={() => selectMedium(null)}
-              title="Show all (0)"
-            >
-              <IconGrid size={16} />
-              <span className="railkey__label">All</span>
-            </button>
-            {enabledMedia.map((m, i) => {
-              const Icon = MEDIUM_ICON[m];
-              return (
-                <button
-                  key={m}
-                  className={`railkey railkey--icon ${onLibrary && filterMedium === m ? "railkey--on" : ""}`}
-                  onClick={() => selectMedium(m)}
-                  title={i < 9 ? `${MEDIUM_LABEL[m]} (${i + 1})` : MEDIUM_LABEL[m]}
-                >
-                  <Icon size={16} />
-                  <span className="railkey__label">{MEDIUM_LABEL[m]}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="rail__spacer" />
-
-          <div className="rail__group">
-            <div className="rail__legend">View</div>
-            <button
-              className={`railkey railkey--icon ${onLibrary && layout === "grid" ? "railkey--on" : ""}`}
-              onClick={() => chooseLayout("grid")}
-              aria-pressed={onLibrary && layout === "grid"}
-              title="Grid view (G)"
-            >
-              <IconGrid size={16} />
-              <span className="railkey__label">Grid</span>
-            </button>
-            <button
-              className={`railkey railkey--icon ${onLibrary && layout === "timeline" ? "railkey--on" : ""}`}
-              onClick={() => chooseLayout("timeline")}
-              aria-pressed={onLibrary && layout === "timeline"}
-              title="Timeline view (T)"
-            >
-              <IconTimeline size={16} />
-              <span className="railkey__label">Timeline</span>
-            </button>
-            {/* Sort lives here now; timeline ignores it. It keeps its slot when
-                the rail collapses (icon-only) — a control that disappears
-                reshuffles everything under it. */}
-            <div className="rail-sort">
-              <Dropdown
-                value={sort}
-                options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
-                onChange={(k) => changeSort(k as SortKey)}
-                ariaLabel="Sort"
-                leading="Sort"
-                compactIcon={<IconSort size={16} />}
-                compact={railCollapsed}
-              />
-            </div>
-          </div>
-
-          <button
-            className="railkey railkey--icon rail__settings"
-            onClick={() => setShowSettings(true)}
-            title="Settings (⌘,)"
-          >
-            <IconSettings size={16} />
-            <span className="railkey__label">Settings</span>
-          </button>
-          <button
-            className="railkey railkey--icon rail__collapse"
-            onClick={toggleRail}
-            title={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            // Explicit: collapsed, the label is display:none and the button
-            // would otherwise fall back to whatever the tooltip happens to say.
-            aria-label={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-pressed={railCollapsed}
-          >
-            <IconSidebar size={16} />
-            <span className="railkey__label">Collapse</span>
-          </button>
-        </div>
-
-        <RailResizer
-          width={railWidth}
-          collapsed={railCollapsed}
-          onWidth={setRailWidthState}
-          onCommit={(px) => setRailWidthState(setRailWidth(px))}
-          onCollapsed={collapseRail}
-        />
-      </nav>
+      <Rail
+        collapsed={railCollapsed}
+        width={railWidth}
+        enabledMedia={enabledMedia}
+        filterMedium={filterMedium}
+        layout={layout}
+        sort={sort}
+        onLibrary={onLibrary}
+        onSelectMedium={selectMedium}
+        onChooseLayout={chooseLayout}
+        onChangeSort={changeSort}
+        onSettings={() => setShowSettings(true)}
+        onToggle={toggleRail}
+        onWidth={setRailWidthState}
+        onCommitWidth={(px) => setRailWidthState(setRailWidth(px))}
+        onCollapsed={collapseRail}
+      />
 
       <div className="main">
         {/* Floating header: the search pill dead-centre, with slots either side

@@ -4,7 +4,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { OmniBox, type OmniBoxHandle } from "./OmniBox";
-import type { Command } from "./CommandPalette";
+import type { Command } from "../lib/paletteCommands";
 
 // The filter value is controlled by the parent (in the app, App's `query`), so
 // wrap OmniBox in local state to exercise real typing/accumulation.
