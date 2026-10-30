@@ -4,8 +4,8 @@
 // media — films, TV, anime, music — the distinction is noise, so ownership is off
 // by default there and the toggle stays hidden until you turn it on in Settings.
 //
-// This is a UI preference only: the `owned` key in a .toml file is always read and
-// always preserved, whether or not its medium is tracked here.
+// This is a UI preference only: an entry's `owned` field is always stored and
+// kept, whether or not its medium is tracked here.
 
 import { readPref, writePref } from "./prefs";
 import { MEDIA, type Medium } from "./types";

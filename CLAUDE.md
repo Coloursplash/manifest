@@ -1,677 +1,162 @@
 # CLAUDE.md — manifest
 
-Guidance for Claude Code working in this repo. Read `GOAL.md` for the "why"; this file is
-the "how". Keep this file current as decisions are made.
+How to work in this repo. `GOAL.md` is the *why*; this is the *how* and the *map*. Keep it
+short and true: rules, architecture, and gotchas that still apply. History belongs in git
+commits, not here.
 
 ## What this is
 
-An open-source, local-first media tracker (films, TV, anime, books, manga, videogames,
-music). User data lives
-on disk as plain `.toml` files; the GUI is a lens over them. See `GOAL.md`.
+An open-source, local-first media tracker for film, TV, anime, books, manga, games and music.
+A Tauri 2 desktop app: a Rust core and a React + TypeScript webview.
 
-## The prime directive
+## Rule 1: never lose what the user wrote
 
-**The files on disk are the source of truth. The app is disposable.**
+- The library is **one SQLite file, `library.sqlite`, in the folder the user picked**. Nothing
+  else holds library data. App preferences (theme, sort, rail width, …) go in localStorage
+  via `lib/prefs.ts`; the folder pointer and API keys go in the OS app-config `config.json`.
+- Every write is **one transaction** in `library/db.rs`. Validate at that boundary (dates are
+  `YYYY-MM-DD`, spans don't run backwards, typed fields have the right type); refuse bad
+  input rather than storing it.
+- Deleting an entry is a **soft delete** (`trashed_at`), confirmed in the UI. Never hard-delete.
+- Never invent data. Adding something never stamps a date: the user picks dates in the log
+  editor.
+- A schema change means bumping `SCHEMA_VERSION` and adding a migration step in
+  `Db::migrate`. Never edit the v1 `SCHEMA` in place once a release has shipped.
 
-Every feature must respect this:
-- Never store user library data anywhere but the user's library folder as `.toml` files.
-  App state (window size, last folder, caches) may live in the OS app-data dir, but the
-  *library* never does.
-- When writing a file back, **preserve the user's formatting, key order, comments, and the
-  exact text of `notes` byte-for-byte** wherever possible. Use a format-preserving TOML
-  editor, not a naive parse→serialize round-trip that reorders keys and strips comments.
-- Assume the user edits files by hand outside the app. The app must watch the library folder
-  and reconcile external changes without clobbering them.
-- A destructive write (delete/overwrite an entry) is a big deal — confirm in-UI and prefer
-  moving to a trash folder over hard delete.
+## Rule 2: the seven media are not interchangeable
 
-## The second directive: the seven media are not interchangeable
+**Film is the exception, not the template.** Most media are consumed *over time*: a season
+over weeks, a book over a month, a game over sixty hours. Only film and music are single
+sittings (`PROGRESS[medium].single` in `src/lib/types.ts`).
 
-**Film is the exception, not the template.** It is the easiest medium — one sitting, one
-date, one opinion — and designing against it produces flows that are quietly broken
-everywhere else. This is the mistake that keeps recurring here, so treat it as a rule:
+- Never make "when?" a single date for a serial medium. A log is a day **or a span**.
+- Per-medium differences belong in the tables in `types.ts`: `PROGRESS` (shape), `VERBS`
+  (wording + repeat tag), `STATUS_VERB`. Don't put `if (medium === "film")` at a call site.
+- **Before shipping anything user-facing**, walk it through all seven media and say in one
+  line what it means for each. If an answer is "same as film", justify it. If you can't,
+  stop and ask the user instead of shipping the film-shaped version.
 
-- **You consume most media over time, not at a point.** A season of TV is a run of episodes
-  across weeks. A book is a month of evenings. A game is sixty hours. Only **film** and
-  **music** (an album you queue up) are genuinely single-sitting — `PROGRESS[medium].single`
-  already says exactly this, in `src/lib/types.ts`.
-- So **never make "when?" a single date field for a serial medium.** "I watched Severance"
-  isn't a date; it's a period, and/or a set of dated blocks as you go. A UI that forces one
-  date makes the user invent data — the same class of bug as the auto-stamped `finished`
-  date that got removed.
-- Changing the *wording* per medium is not the same as changing the *shape*. `VERBS` swaps
-  "watch"/"read"/"play"; that is cosmetic. `PROGRESS` describes the actual shape (single vs
-  serial, unit, total, season). If a feature needs a per-medium difference, it belongs in
-  those tables — not in an `if (medium === "film")` at the call site, and not left implicit.
+Real bugs this rule caught: "recently finished" sorting ignored films (they only have logs,
+not a `finished` field, so `lib/logs.ts` has `lastDone`), and the timeline only flagged
+`#rewatch`/`#reread` as repeats (it now reads every medium's repeat tag from `VERBS`).
 
-**The check, before shipping anything user-facing:** walk the feature through all seven
-media — film, tv, anime, book, manga, game, music — and say in one line what it means for
-each. If an answer is "same as film", justify it. If you can't, the design isn't finished:
-say so and ask, rather than shipping the film-shaped version for everything.
-
-## Stack
-
-- **Shell:** Tauri 2 (Rust core + webview frontend). Chosen for tiny bundle, strong local
-  file access, and offline-first fit.
-- **Backend (Rust):** file I/O, library folder watching, TOML parse/format-preserving write,
-  external API fetch, cover image download + local cache. Exposed to the frontend via Tauri
-  commands.
-- **Frontend:** React + TypeScript + Vite. Plain CSS (or CSS modules) for the TE styling —
-  avoid heavy component libraries that fight the aesthetic.
-- **Rust TOML:** use `toml_edit` (format-preserving) for writing user files. `serde`/`toml`
-  is fine for internal/app-state files only.
-
-If a decision here turns out wrong, change it here and note why — don't let code and this
-file drift.
-
-## Repository layout (target)
+## Architecture map
 
 ```
-manifest/
-  src-tauri/          # Rust core
-    src/
-      commands/       # Tauri command handlers (thin — call into modules below)
-      library/        # load/save entries, folder watching, schema types
-      fetch/          # TMDB / AniList / OpenLibrary / GoogleBooks clients
-      cover/          # download + local cache of cover images
-    Cargo.toml
-    tauri.conf.json
-  src/                # React frontend
-    components/
-    views/            # grid/shelf, entry detail, search, add-entry
-    styles/           # TE design tokens + component styles
-    lib/              # tauri command wrappers, types (mirror Rust schema)
-  GOAL.md
-  CLAUDE.md
+library.sqlite ──► src-tauri/src/library/db.rs     Db: list/get/create/patch, add/update/delete_log, trash
+                   src-tauri/src/library/import.rs one-time import of a legacy .toml library
+                   src-tauri/src/library/schema.rs Entry, LogEntry, Medium, Status (serialised to JSON)
+                   src-tauri/src/state.rs          AppState { db }, config.json (folder + API keys)
+                   src-tauri/src/fetch/*.rs        TMDB, AniList, Open Library, RAWG, MusicBrainz
+                   src-tauri/src/cover.rs          cover download → OS cache dir
+                   src-tauri/src/commands.rs       thin #[tauri::command]s over the above
+                               │  invoke()
+src/lib/api.ts  ◄──────────────┘  the ONLY place that calls invoke; typed wrappers
+src/lib/types.ts                  mirrors schema.rs by hand + the per-medium tables
+src/App.tsx                       owns app state: entries, view, filter, prefs; wires views
+  components/Rail.tsx             sidebar (markup only)
+  components/OmniBox.tsx          the floating pill: filter / `>` commands / add mode
+  views/LibraryGrid.tsx           status sections (shelf collapsed, grid-per-medium expanded)
+  views/Timeline.tsx, Review.tsx  diary + year/month review, built by lib/timeline.ts
+  views/EntryDetail.tsx           one entry: status, rating, progress, log (components/LogList)
+  views/add/AddPanel.tsx          the add flow inside the pill (search hook, grid, log dialog)
+  views/SettingsModal.tsx, Onboarding.tsx
 ```
 
-Create this incrementally — don't scaffold empty dirs ahead of need.
+Data flow: every mutation calls an `api.ts` function, which returns the **updated `Entry`**,
+and `App.upsert` swaps it into `entries`. There is no file watcher and no global reload after
+writes. Pure logic lives in `src/lib/` (`filter`, `sort`, `timeline`, `logs`, `fuzzy`) and is
+unit-tested. Components stay dumb about storage.
 
-## Data schema
+### Data model (see `db.rs` for the authoritative SQL)
 
-One `.toml` file per entry, grouped by medium under the library folder, e.g.
-`library/films/`, `library/tv/`, `library/anime/`, `library/books/`, `library/manga/`,
-`library/games/`, `library/music/`. Filename is a slug of the title.
-
-**Shared fields (all media):**
-- `title` (string, required)
-- `year` (int) — release/publication year
-- `cover` (string) — source URL; the local cache path is derived, not stored
-- `status` (string) — one of `want`, `active`, `done`, `dropped`, `paused`
-- `rating` (float, optional) — user's own scale, don't impose one
-- `tags` (array of strings, optional)
-- `owned` (bool, optional) — do you have a copy? Absent means no. Only surfaced for
-  media you *buy* (games by default); it splits `want` into **Backlog** (owned) and
-  **Wishlist** (not). Typed on purpose — a hand-written `owned = "yes"` reads as absent
-  rather than being coerced true, and is preserved untouched.
-- `notes` (multiline string) — the dated log; **treat as sacred, never reformat**
-
-**Progress fields (typed, optional; interpreted per medium by the UI):**
-- `started` / `finished` (date strings `YYYY-MM-DD`)
-- `progress` (int) — page (books/manga), episode (tv/anime), or **hours played** (games,
-  open-ended so no completion bar); film/music have none (single sitting)
-- `season` (int) — tv
-
-**Per-medium fields (layer on top, live in `extra`):**
-- films: `director`, `runtime`
-- tv / anime: `creator`/`studio`, `episodes`
-- books / manga: `author`, `pages`/`volumes`/`chapters` (the total; `progress` is the position)
-- games: `developer`, `publisher`, `platforms`, `genres`, `metacritic` (progress is hours;
-  `done` = "Beaten", 100% is logged in `notes`, not a separate status)
-- music: `artist`, `type` (Album/EP/Single) — albums are single-sitting like film
-
-**Notes convention:** each block's header is a date — **or a span of dates** — optionally
-followed by `#tag`s (rewatch/reread are tags, not prose). The body is optional; a bare
-dated+tagged line is a valid "watched it" entry.
-
-```
-2026-07-09 #rewatch          a single sitting
-2026-03-01..2026-03-19       a stretch: read over three weeks
-```
-
-Spans exist because only film and music are single-sitting (see the second directive). We
-*write* `..` — trivial to hand-type — but `parseNotes` also accepts `→`, `–`, `—`, `-` and
-`to`, and collapses a span whose ends match back to one date. `append_note`/`update_note`
-take an optional `end` alongside `date`; other fields change via `patch_entry` (which keeps
-`notes` last in the file).
-
-Schema is intentionally loose and additive — unknown keys a user adds by hand must be
-preserved, not dropped. When you extend the schema, update this section and `GOAL.md`'s
-example if the shape of a core entry changes.
-
-"Log a rewatch" = append a new dated block; never rewrite existing blocks.
+- **entries**: `id` (`"medium/slug"`, unique even for a second "Dune": `film/dune-2021`, then
+  `-2`…), `medium`, `title`, `year`, `cover` (remote URL; the local cache path is derived),
+  `status` (`want|active|done|dropped|paused`), `rating` (user's own scale), `tags` (JSON),
+  `owned` (only surfaced for media you buy, games by default: it splits `want` into
+  Backlog/Wishlist), `started`/`finished`, `progress` (page / episode / chapter / **hours** for
+  games, which is open-ended so there's no bar), `season` (tv), `extra` (JSON per-medium
+  metadata: director, author, episodes, …), `trashed_at`.
+- **logs**: `id`, `entry_id`, `date`, `end` (a span; `NULL` for one day), `tags`
+  (`rewatch`/`reread`/`replay`/`relisten` are tags, not prose), `body` (free text, any number
+  of paragraphs). Edits and deletes address a log **by id, never by position**.
+- `patch_entry` takes JSON: known keys are type-checked, `null` clears, and any other key goes
+  into `extra`. Tags are normalised the same way on both sides (`clean_tag` in Rust,
+  `normalizeTag` in TS). Keep them in sync.
 
 ## External APIs
 
-- **Film / TV:** TMDB (needs a free API key; keep it out of the repo — user-supplied or via
-  a build-time env, never committed).
-- **Anime / Manga:** AniList GraphQL (no key) — preferred; MAL as fallback.
-- **Books:** Open Library (no key) first, Google Books as fallback.
-- **Videogames:** RAWG (rawg.io; needs a free API key, user-supplied like TMDB — kept out of
-  the repo, stored in app config as `rawg_api_key`, or the `RAWG_API_KEY` env var).
-- **Music:** MusicBrainz release-group search (no key; descriptive User-Agent required) +
-  Cover Art Archive for covers (no key).
-
-Rules: fetch on demand (user searches / adds an entry), cache aggressively, degrade
-gracefully offline, and always let the user override or hand-enter any fetched field.
-Respect rate limits and set a descriptive User-Agent.
+TMDB (film/TV; user-supplied key), AniList (anime/manga; no key), Open Library + Google Books
+(no key), RAWG (games; user-supplied key, `rawg_api_key` / `RAWG_API_KEY`), MusicBrainz +
+Cover Art Archive (music; no key, descriptive User-Agent). Fetch on demand, degrade gracefully
+offline, and let the user override any fetched field. Never commit API keys.
 
 ## Aesthetic: Teenage Engineering
 
-Target the OP-1 / OP-Z / TP-7 language. Keep design tokens centralized in `src/styles/`.
-- Restrained palette (near-black/off-white/greys) + **one** strong accent (orange).
-- Chunky, tactile, high-contrast controls; visible grid; generous corner radius on "keys".
-- Functional/technical microcopy and labels; monospace-leaning type.
-- Prefer bespoke CSS over a UI kit. Motion is snappy and mechanical, not floaty.
-Don't sprinkle extra accent colors "for variety" — restraint is the whole look.
+OP-1 / OP-Z / TP-7 language. Tokens are centralised in `src/styles/global.css` (`:root`).
+Restrained near-black/off-white/grey palette plus **one** accent (orange by default; user
+choosable). Chunky, tactile, high-contrast controls with a visible grid. Functional microcopy,
+monospace-leaning type, snappy mechanical motion. Bespoke CSS, no UI kit, no extra accents.
+
+## Gotchas (each one bit us)
+
+- **jsdom has no layout.** Bugs where things move or resize are invisible to the test suite.
+  Check CSS geometry in headless Firefox (`firefox --headless --screenshot page.html` against a
+  markup probe, then read the PNG) before claiming a layout fix.
+- **`position: fixed` menus** (OmniBox panel, Dropdown) are measured off their trigger, so
+  re-measure on resize. A ResizeObserver can't see a *move*, so watch the full-width row too.
+  A transformed ancestor becomes the containing block and shoves them sideways: never put
+  `transform` on `.omnibar`. `.rail` must not take a `z-index`, or it traps the Sort menu.
+- **Drag uses pointer events, not HTML5 DnD.** Tauri's webview swallows native drag events
+  (see `MediaChooser`, `RailResizer`). `src/test/setup.ts` polyfills `PointerEvent`.
+- **Collapsing the rail may only remove text.** Rows and icons must not shift. The rail is
+  sized in px tokens (`--rail-key-h`, `--rail-key-px`, `--rail-pad-x`), and
+  `RAIL_COLLAPSED_WIDTH` (71) mirrors the CSS.
+- **Cards are one width everywhere.** `LibraryGrid` measures its column and publishes
+  `--card-w` so a collapsed shelf and an expanded grid agree.
+- **Page actions portal into the header** (`components/HeaderSlot.tsx`). Standalone view tests
+  must render the two host divs (see `EntryDetail.test.tsx`).
+- **Single-key hotkeys stand down** while the pill isn't in filter mode and while typing in a
+  field. Every handler calls `preventDefault()` so the key can't leak into a field that opens
+  focused.
+- **Tauri command args are camelCase from JS** (`log_id` in Rust ⇄ `logId` in `api.ts`).
+- **`<Cover>` renders the title as fallback text** when there's no cover URL. Seed test entries
+  with a `cover` so titles aren't in the DOM twice.
+- **WebKit honours `user-select: none` on form controls.** `.omni__panel--add` turns selection
+  back on so the log textarea works.
 
 ## Conventions
 
-- Rust: standard `rustfmt` + `clippy`; keep command handlers thin, logic in modules.
-- TS: strict mode on; types in `src/lib/` mirror the Rust schema — keep them in sync.
-- Keep the frontend dumb about files: all disk access goes through Tauri commands, never
-  assume a path shape in the UI.
-- Small, reviewable changes. This is a greenfield hobby project — favor clarity over
-  cleverness.
+- Rust: `rustfmt` + `clippy --all-targets` clean. Command handlers stay thin; logic lives in
+  `library/`. TS: strict mode on; `types.ts` mirrors `schema.rs`.
+- Small, reviewable commits. Favour deleting code over adding layers. If a component passes
+  ~300 lines or grows a second mode, split it.
+- Never add telemetry, analytics, accounts or a hosted backend. If a task seems to need one,
+  stop and flag it.
+- Update `GOAL.md` and this file when a decision changes. Docs are part of the change.
 
-## Working agreements for Claude
+## Tests
 
-- This is not a git repo yet and has no build tooling. **Before writing code, confirm with
-  the user** whether to scaffold the Tauri project (it pulls a large dependency tree) —
-  don't `cargo`/`npm init` unprompted.
-- **Run the seven-media check** (see the second directive) on every user-facing change before
-  writing it. Don't generalise from film.
-- When unsure about a product decision, check `GOAL.md` first; if still unclear, ask.
-- Update `GOAL.md` / `CLAUDE.md` when a decision changes — treat docs as part of the change.
-- Never add telemetry, analytics, accounts, or a hosted backend. If a task seems to need
-  one, stop and flag it.
-- Don't commit API keys or user library data.
+- Frontend (Vitest + jsdom + RTL): unit tests next to the code (`src/**/*.test.ts(x)`);
+  integration tests in `tests/integration/` mount the **real `<App />`** over an in-memory
+  fake backend (`harness.tsx`; `failOnce` makes a command reject once).
+- Backend: unit tests inline (`#[cfg(test)]`), plus integration tests in `src-tauri/tests/`
+  that drive the real `Db` against a temp folder (`db_lifecycle.rs`, `legacy_import.rs`).
+- Every bug fix gets a test that fails without it.
 
-## Status
+```
+nix develop -c npm run tauri dev                         # run the app
+nix develop -c npm test                                  # frontend tests
+nix develop -c bash -c 'cd src-tauri && cargo test'      # backend tests
+nix flake check                                          # both, hermetically
+```
 
-- **M0 done** — `flake.nix` dev shell (Rust 1.97, Node 22, `cargo-tauri` 2.11), Tauri 2 +
-  React/TS/Vite scaffold, builds clean.
-- **M1 done** — data core: `library/{schema,store,watch}.rs`, `state.rs`, `commands.rs`.
-  Format-preserving `append_note`/`set_status` verified by unit tests (the notes block
-  round-trips as a `"""` multi-line string; comments/key-order/unknown keys survive).
-- **M2 done** — fetch (`fetch/{tmdb,anilist,books}.rs`) + local cover cache (`cover.rs`),
-  exposed via `search_metadata` / `cache_cover`. Covers shown through the asset protocol
-  (`protocol-asset` feature + `$APPCACHE/covers` scope). AniList/OpenLibrary parsing verified
-  against live APIs.
-- **M3 + M4 done** — frontend: `lib/{types,api,notes}.ts`, `styles/global.css` (TE design
-  system), `components/Cover.tsx`, `views/{Onboarding,LibraryGrid,EntryDetail,AddEntryModal,
-  SettingsModal}.tsx`, `App.tsx`. Full `tsc` + `cargo build` link clean.
+`nix flake check` only sees git-tracked files, so `git add` new tests first. Refresh the
+flake's `npmDepsHash` (`nix run nixpkgs#prefetch-npm-deps -- package-lock.json`) whenever
+`package-lock.json` changes.
 
-- **v1.2 done — timeline + views roadmap.** Phased; timeline first, docs updated per phase.
-  - **Phase 1 done** — Timeline (diary) view. `lib/timeline.ts` (`buildTimeline` flattens each
-    dated `notes` block into an event — `#rewatch`/`#reread` show separately — plus a
-    `finished`-date fallback when no log covers that day; `groupByMonth` buckets for
-    rendering). `views/Timeline.tsx` renders newest-first with year/month dividers + per-month
-    medium counts. `lib/layout.ts` persists the grid⇄timeline choice; a `GRID | TIMELINE`
-    toggle in the topbar (`.tabs--layout`) branches `App.tsx`'s content. Both layouts share the
-    existing medium-tab + search `filtered` list. Pure client-side, read-only over `notes`.
-  - **Phase 2 done** — grouped, collapsible grid. `views/LibraryGrid.tsx` now buckets the
-    (already filtered) entries by status into sections: In Progress (active+paused,
-    sub-grouped by medium, open by default — superseded below: every category now starts
-    collapsed as a shelf, and splits by medium only once expanded) → Watchlist (want) → Done →
-    Dropped, plus an
-    Unsorted catch-all for statusless entries. Each section is a collapsible summary with a
-    count; open/closed state persists in localStorage (`manifest-sections`). Empty sections
-    are hidden.
-  - **Phase 3 done** — sort controls. `lib/sort.ts` (`sortEntries` + persisted `SortKey`):
-    Name / Recently finished / Recently released / My score; missing fields sort last. A
-    `.select` in the topbar (grid layout only — the timeline stays date-desc) drives it;
-    `App` sorts `filtered` → `sorted` and feeds it to the grid.
-  - **Phase 4 done** — dedicated "In Review" page, per **year or month**. `views/Review.tsx`
-    aggregates `buildTimeline(entries)` for the period: logged/titles/avg-score/busiest
-    (month for a year, day for a month) stat tiles, a by-medium breakdown, an activity bar
-    chart (12 months, or per-day for a month), and top-rated covers. Reached by clicking a
-    year *or* month header on the timeline; `App`'s `View` gains a
-    `{kind:"review"; year; month?}` case. Whole-library (ignores the medium tab), read-only.
+## Next
 
-- **v1.3 done — videogames + music.** Two new media added end-to-end. Backend: `Medium::Game`
-  / `Medium::Music` (`schema.rs`), providers `fetch/rawg.rs` (games; user-supplied RAWG key,
-  search list + detail call for developer/publisher/synopsis) and `fetch/musicbrainz.rs`
-  (music; keyless release-group search, Cover Art Archive covers). `fetch::search`/`details`
-  now thread a `rawg_key` alongside `tmdb_key`; `state.rs` stores `rawg_api_key`; new
-  `has_rawg_key`/`set_rawg_key` commands. Frontend: `types.ts` gains the two mediums with
-  labels, status verbs (games `done` = "Beaten"), a `VERBS` table (log/past/repeat-tag per
-  medium, replacing the old book/manga literals in `EntryDetail`), and `PROGRESS` (games =
-  open-ended `hour` unit with no total → no completion bar; music single-sitting). RAWG key
-  gated in the Add flow + a second key field in Settings (`ApiKeyField` extracted and reused).
-
-- **v1.4 done — first-run wizard + naming.** `views/Onboarding.tsx` is now a stepped setup
-  wizard (folder → what to track → API keys → ready) with a progress stepper, replacing the
-  single "choose folder" panel. It picks the library folder, lets the user choose enabled
-  media (persisted via `saveEnabledMedia`, lifted to `App` through `onSetMedia`), and offers
-  the TMDB/RAWG key fields inline — the keys step is skipped when nothing tracked needs a key
-  (reuses `ApiKeyField`, now exported from `SettingsModal`). `App` only swaps to the home
-  screen on the final `onComplete(path)`; the backend folder is activated on pick, so quitting
-  mid-wizard just lands on home next launch (media/keys still settable in Settings). Wizard
-  styles live under `.wizard*` in `global.css`; new `IconFolder`. Also renamed the grid's
-  `want`-status section from "Watchlist" → **"Backlog"** (neutral across games/music) — the
-  bucket key stays `watchlist` for the persisted collapse state.
-  - **Switch library + recent libraries.** `lib/libraries.ts` keeps a localStorage list
-    (`manifest-libraries`, most-recent-first, capped 8) of `{path, name}` — path + a user
-    nickname (defaults to the folder basename). `App` records the active folder into it on
-    every `libraryPath` change and exposes `switchToLibrary(path)` (activates by path via
-    `set_library_folder`; drops the entry from the list if the folder is gone) and
-    `browseForLibrary()` (native picker). `components/LibrarySwitcher.tsx` is a rail dropdown
-    under the brand showing the current nickname + a menu of the others (menu is
-    `position: fixed`, measured off the trigger, to escape the rail's scroll clipping).
-    `SettingsModal`'s "Library" section lists all recents with an inline-editable nickname
-    (`RecentLibraryRow`, committed on blur/Enter), a Switch button, and a forget (×) action;
-    "Open another folder…" browses. Lets a user keep separate libraries (per person / user)
-    on one machine and hop between them in a click. One folder is active at a time. Library
-    switching lives **only in Settings** (not the rail) — it's not a primary action.
-  - **Themed dropdown.** `components/Dropdown.tsx` is a reusable custom `<select>` (chunky
-    trigger + `position: fixed` menu measured off the trigger so it escapes overflow
-    clipping; `align` left/right, optional `leading` label, checkmark on the selected item).
-    The topbar Sort control uses it (`align="right"`, `leading="Sort"`), replacing the native
-    `<select>`/`.select` (both removed).
-  - **More sort options.** `lib/sort.ts` now offers Name A–Z / Z–A, Recently finished,
-    Recently started, Newest / Oldest release, Highest / Lowest rated (8 keys). Comparators
-    refactored into `byTitle`/`byDateDesc`/`byNumber(dir)` helpers + a `COMPARATORS` table;
-    missing fields always sort last. Old persisted keys still validate.
-  - **Reorderable categories.** `lib/media.ts` now persists a user **order** alongside the
-    enabled set (`{order, enabled, known}`; migrates the old `{enabled, known}` and legacy
-    bare-array shapes — order defaults to canonical `MEDIA`, new media append + auto-enable).
-    `getMediaOrder`/`saveMediaOrder` added; `getEnabledMedia`/`saveEnabledMedia` now return in
-    user order. `components/MediaChooser.tsx` is a shared draggable list (grip + label + a
-    show/hide checkbox per row, ≥1 enabled) used in **both** Settings and the onboarding
-    "Track" step (which now toggles/reorders live via `App` instead of staging a local
-    `selected`). Order drives the rail + Add flow; the grid's per-medium sub-grouping still
-    uses canonical `MEDIA` order.
-    Reorder uses **pointer events** (not HTML5 DnD — Tauri's webview swallows native drag
-    events). Technique that actually feels right: grab the row anywhere but the checkbox →
-    `setPointerCapture`; the held row gets a live inline `translateY(dy) scale` and pops
-    (`.is-held`: accent border + offset shadow, follows the cursor 1:1), while neighbours get
-    a slot-sized `translateY` shift with a transition. The array is **not** reshuffled during
-    the drag (that reset the baseline and made it "break"); it's spliced once on pointer-up
-    (optimistic `setItems` + `onReorder`). Stride (row height + gap) is measured on drag start.
-    Travel clamps to the list bounds; text selection is killed app-wide via a `body.is-
-    reordering` class during the drag. When the cursor nears the scroll container's top/bottom
-    margin the container auto-scrolls (rAF loop, nearest scrollable ancestor = the `.scrim`),
-    and the scroll delta since drag-start is folded into the drag math so the held row stays
-    under the cursor. Row toggle reads Show/Hide (full-height, wide hit target).
-
-- **Frontend test suite added.** Vitest + jsdom + React Testing Library (`vitest.config.ts`;
-  `npm test` / `npm run test:watch`). 92 tests, two layers:
-  - **Pure `lib/` logic** — `notes` (block parsing/tags), `timeline` (`buildTimeline` de-dupe +
-    `groupByMonth` bucketing/counts/weekday), `sort` (all 8 comparators + missing-field ordering
-    + persistence), `media` (enabled/order load + legacy migrations), `libraries` (recents
-    cap/rename/basename), `accent` (WCAG ink pick + lighten), `layout`.
-  - **Component/interaction** (`*.test.tsx`) — `Dropdown` (open/select/close/backdrop),
-    `MediaChooser` (Show/Hide toggle + last-enabled guard; the pointer-drag reorder physics
-    aren't exercised — jsdom has no layout), `LibraryGrid` (status bucketing, collapse persist,
-    card→`onOpen`), and `EntryDetail` (status chips, rating, the full log-compose flow, Started
-    date, Trash confirm) with `../lib/api` mocked to assert the exact command each interaction
-    fires. `src/test/setup.ts` stubs the Tauri `invoke`/`convertFileSrc` bridge + jest-dom
-    matchers; `src/test/entry.ts` (`makeEntry`) builds fixtures.
-  - **Caught a real bug:** `EntryDetail`'s Trash gated `onDeleted()` on the return of
-    `deleteEntry` (a `void` command → always `undefined`), so trashing never navigated away.
-    Rewrote `remove()` to treat "didn't throw" as success. Test files are type-checked by the
-    prod `tsc` but tree-shaken out of the app bundle.
-  - **Test layout (mirrors Rust):** *unit* tests are co-located next to the code
-    (`src/**/*.test.{ts,tsx}`) — the Vitest/Jest idiom, and it matches the Rust side where unit
-    tests live inline under `#[cfg(test)] mod tests` (currently just `library/store.rs`).
-    *Integration* suites that drive several modules together live in **`tests/integration/`**
-    (import back into `../../src/...`). `vitest.config.ts` `include`s both globs; `tsconfig.json`
-    `include`s `["src", "tests"]` so both are type-checked by the build's `tsc`. Scripts:
-    `npm test` (all), `npm run test:unit` (`vitest run src`), `npm run test:integration`.
-  - **Integration suite** (`tests/integration/`, 9 tests) mounts the **real `<App />`** — real
-    views + real `lib/` + real `src/lib/api` routing — over a stateful in-memory fake of the
-    Tauri backend (`harness.tsx`: `installFakeBackend` implements the command surface over a
-    `Map<id, Entry>`; `renderApp(seed)` installs it + renders). Only the `invoke` disk/network
-    boundary is faked, so flows exercise everything above it. Covers: `library-flow` (boot,
-    pill filter, digit-hotkey medium filter, `t`/`g` layout switch, open entry → status change
-    round-tripped to the store via `patch_entry`), `add-entry` (＋ → add-mode pill → debounced
-    provider search → commit a hit → `create_entry`+`finalize` land it in grid+store; TMDB-key
-    gating), `command-bar` (`>` command mode → run `Timeline view`; fuzzy-jump to an entry via
-    Enter). Note `<Cover>` renders the title as fallback text when a cover URL is missing —
-    seed entries with a `cover` so titles aren't in the DOM twice. Now 133 frontend tests.
-
-- **Command palette (⌘K) added.** A reusable, domain-agnostic system in three layers:
-  - `lib/fuzzy.ts` — pure, dependency-free fuzzy matcher (`fuzzyMatch` → score + matched
-    indices, with prefix/word-start/camelHump/consecutive bonuses; `fuzzyRank` filters + ranks,
-    stable for ties). No DOM — reusable for any "type to filter" list.
-  - `components/CommandPalette.tsx` — the generic overlay + `Command` type. Feed it a flat
-    `Command[]`; it handles search, fuzzy ranking, first-seen-order **grouping**, keyboard nav
-    (↑/↓ wrap, Enter, Esc), and **drill-in submenus** via `Command.children()` (a stack with a
-    breadcrumb; Esc/Backspace pop). Commands are either terminal (`perform`, closes unless
-    `keepOpen`) or drill-in (`children`). Knows nothing about manifest.
-  - `lib/useHotkey.ts` — reusable global shortcut hook. Combo strings like `"mod+k"` (mod = ⌘
-    on mac / Ctrl elsewhere); ignores keystrokes while typing in inputs *unless* the combo has
-    a modifier (so ⌘K still fires from the filter box).
-  - App wiring: `lib/paletteCommands.ts` (`buildCommands(ctx)`) is the only app-aware piece —
-    turns app state + handlers into the command list (Actions: add / settings / year-in-review /
-    Switch library… drill-in; View: grid / timeline / Sort by… drill-in / theme toggle; Filter:
-    All + each enabled medium; Entries: jump to any entry). `App` binds `"mod+k"` to toggle
-    `showPalette`, memoizes `commands` (handlers close over stable setters only, so state values
-    are the real deps), renders `<CommandPalette>`, and adds a `.cmdk-trigger` (⌘K) button in the
-    topbar. Styles under `.cmdk*` in `global.css` (scrim `z-index:60`, above modals/dropdowns;
-    active row = full accent fill). Tests: `lib/fuzzy.test.ts` + `components/CommandPalette.test.tsx`
-    (open/group/filter/perform/Enter/drill-in+pop/Esc-closes/empty). Now 109 frontend tests.
-  - **Global hotkeys (no palette needed) + header polish.** `lib/useHotkey.ts` gains
-    `useHotkeys(specs[], handler)` — binds a family of combos in one listener (used for the
-    digit keys, where a per-key hook loop would break rules-of-hooks). Bindings in `App`:
-    `⌘K` command mode, `g`/`t` layout, `n` new entry, `⌘,` settings, `/` focus search, `Esc`
-    back-out-of-page / clear filter, `0` = All + `1`–`9` = nth enabled medium. Single-key combos
-    self-disable while typing (the hook ignores non-modifier keys in inputs); **every handler
-    `preventDefault()`s** so the key can't leak into a field that opens autofocused (the `n`→Add
-    bug). Rail + Add carry `title` tooltips showing their key. All header controls share
-    `--control-h` (40px) so the row lines up; `.topbar__actions` wraps as a unit on narrow widths.
-  - **Search box IS the command bar (VSCode-style `>`), centred.** Replaced the separate `⌘K`
-    button + modal palette with `components/OmniBox.tsx` (`forwardRef`, `OmniBoxHandle` =
-    `focus()` / `commandMode()`): one **centred** header field where plain text drives the
-    library `filter`, and a leading `>` flips it into command mode — fuzzy-searching
-    `buildCommands` in a `position:fixed` dropdown (measured off the field to escape clipping;
-    reuses the `.cmdk__*` row styles, shows each command's hotkey via `.cmdk__hint`). Command
-    mode is **explicit state** (`mode`/`cmd`), and the `>` is represented by the ›-icon on the
-    left — the character is *not* kept in the text, so it never doubles up; Backspace on an empty
-    query drops back to filter. `⌘K`/`commandMode()` enters it; Enter/↑/↓ drive the list; Esc
-    exits and restores the live filter. Topbar is a 3-part flex (`topbar__gutter` |
-    OmniBox | `topbar__actions`) with equal side weights so the box stays dead-centre; width
-    `min(640px, 58vw)`. `lib/paletteCommands.ts` is **flat** (no `children` drill-in — Sort and
-    Switch-library expanded to one command each, each with a `hint`), the right shape for inline
-    fuzzy jump. The modal `CommandPalette.tsx` stays in the tree (still reusable + tested) but
-    `App` no longer renders it. Sort dropdown is now **always** rendered (was gated on grid
-    layout, which shifted the row on every view switch) — timeline ignores it. Tests:
-    `OmniBox.test.tsx` (filter vs `>` command mode, un-doubled `>`, fuzzy, click/Enter run, Esc
-    restore, ref `commandMode`). 117 frontend tests.
-  - **Floating pill + unified search/add + collapsible rail.** Removed the header bar entirely;
-    `OmniBox` now floats as a centred pill over the content (`.omnibar`, `position:absolute`
-    top-centre in the now-`relative` `.main`; `.content` gains top padding so nothing hides
-    under it; pill `z-index:15`/panel `16`, below the modal scrim). A `+` (`.omnibar__add`)
-    button sits beside it. **Search unifies browse + add**: in plain-text mode OmniBox shows a
-    dropdown of matching entries to jump to **plus** an `Add "<query>"…` row (`App.filterResults`
-    fuzzy-ranks `filtered`, caps 6, appends the add action); picking Add opens the flow prefilled
-    via the new `AddEntryModal` `initialQuery` prop (seeds its search + auto-runs it). Dropdown
-    is focus-gated (`focused` state; blur exits command mode). The `'on'` marker is gone —
-    `Command.active` renders a leading `✓` (`.cmdk__check`) and an accent title (`.is-current`);
-    `paletteCommands` sets `active` for the current layout/sort/medium (needs `currentMedium` in
-    ctx) and keeps hotkey hints (now higher-contrast `.cmdk__hint`). **Rail collapses to icons**:
-    `lib/rail.ts` persists the flag, a toggle (`IconSidebar`) flips `rail--collapsed` (62px,
-    labels/legends/spec/Sort hidden, brand → `M.`); every rail item now has an icon
-    (`MEDIUM_ICON` map: `IconFilm/Tv/Anime/Book/Manga/Game/Music`), and Sort moved from the
-    header into the rail's View group (expanded only — superseded below: it now stays, icon-
-    only, when the rail collapses). Tests: OmniBox filter-results + `✓`,
-    `lib/rail`. 121 frontend tests; `npm run build` clean.
-  - **Add flow joined to the pill (one input, one menu).** The centred Add modal is gone from
-    the main flow: `OmniBox` gains an **add mode** (third mode alongside filter/command) — the
-    pill's single input becomes the add search, and `renderAdd(query, close)` fills the dropdown
-    with the Add UI. `AddEntryModal` gained `variant="panel"` + a controlled `search` prop:
-    `PanelShell`/`ModalShell` wrappers, its own search field hidden (the pill drives it via a
-    300ms-debounced effect), `ManualAdd` `hideInput`. All add entry points route through
-    `omniRef.addMode(query)` (＋ button, `n`, ⌘K ▸ Add entry, and the search dropdown's "Add …"
-    row, which OmniBox appends itself and intercepts). Entering add mode **clears the library
-    filter** (so the bar is empty on exit — fixes the stuck-query bug); a `mousedown` click-away
-    (not a backdrop element, which would cover the input) + Esc close it. **Dropdown centring
-    bug fixed**: `.omnibar` centred via flex + `pointer-events` instead of `translateX(-50%)` —
-    a transformed ancestor was becoming the containing block for the `position:fixed` dropdown
-    and shoving it to the right. Add panel is wider (clamped to viewport) + accent-topped
-    (`.omni__panel--add`, `.addpanel*`). Tests: OmniBox add-mode entry (appended row + clears
-    filter) + `addMode()` ref. 123 frontend tests; build clean.
-
-- **Wishlist split (`owned`) done.** Backlog now means *own it, haven't started it*; a new
-  **Wishlist** section holds `want` entries you'd have to buy first. Backend: `owned:
-  Option<bool>` is a typed shared field (`schema.rs`, `KNOWN_KEYS` 11→12, read in
-  `entry_from_doc`) — `patch_entry` already bridged JSON bools, so no write-path change.
-  Frontend: `lib/ownership.ts` persists *which media track ownership*
-  (`manifest-owned-media`, default `["game"]`; an empty saved array is a real choice, only a
-  malformed save falls back) plus `isOwned` (only an explicit `true` counts).
-  `LibraryGrid` gains an optional `ownedMedia` prop and a per-section `accepts` predicate —
-  sections match in order, so Backlog claims `!tracks(medium) || isOwned(e)` and Wishlist
-  takes the rest of `want`; media that don't track ownership behave exactly as before.
-  `EntryDetail` shows an `✓ Owned` chip on its own row (gated by a `showOwned` prop) that
-  patches `{owned: true}` / `{owned: null}` — **toggling off removes the key** rather than
-  writing `owned = false`. Settings has an "Ownership" section (chips over `enabledMedia`).
-  The game `want` verb changed **"Backlog" → "Want to play"** so the status chip no longer
-  collides with the section name. An unmarked `want` entry counts as unowned → Wishlist.
-  Tests: `lib/ownership.test.ts` (9), grid split (4), the Owned toggle (3), and two backend
-  round-trips in `store_lifecycle.rs` (typed bool on disk / clears to absent; a hand-written
-  `owned = "yes"` reads as not-owned and survives). 149 frontend + 14 backend tests.
-
-- **Adding never invents a date (bugfix).** `AddEntryModal`'s `finalize()` used to stamp
-  today onto a new entry — `finished` + a bare log block for `done`, `started` for `active`
-  — assuming you add things right after watching them. Wrong often enough to be a bug: a
-  film seen in May got logged as seen today, and since films are single-sitting (`PROGRESS
-  .single`) the invented `finished` had **no field anywhere in the UI**, so it was invisible
-  while still emitting a phantom `kind:"finished"` row on the timeline (and into Review's
-  stats). `finalize()` is gone; adding writes the status and nothing else, and dates are
-  chosen in the log editor. `EntryDetail` now renders a **Dates** section for single-sitting
-  media *only when* a `started`/`finished` key actually exists on disk (never hide data we
-  can't otherwise show), and `DateField` grew an explicit × — emptying a native date input
-  isn't reliable in the webview, and these dates are load-bearing for the timeline.
-
-- **Log dialog on add (Letterboxd-style).** Removing the auto-date left a hole: to log
-  something you'd added you had to open its page. Now clicking the **done** quick-status
-  (Watched / Read / Played / Beaten) on a search hit opens a log dialog *before* anything is
-  written — date, `#rewatch` chip, free tags, a rating, and a review body. Commit does
-  `create_entry` → `append_note` → `patch_entry` (rating only if set); backing out writes
-  nothing at all. `want`/`active` still file in one click, no dialog. Two components came out
-  of `EntryDetail` to make this reuse rather than duplication: `components/Rating.tsx`
-  (`RatingCircles`) and `components/NoteEditor.tsx` (+ a `NoteDraft` type, an optional
-  `withRating`, and an overridable `submitLabel`). `NoteEditor.onSubmit` now takes a single
-  `NoteDraft` instead of three positional args. `AddEntryModal` gained a `create()` helper
-  (fetch details → `createEntry`) shared by the instant path and the dialog, so `addManual`
-  routes through the same code. Styles: `.logdialog*`. 154 frontend tests.
-  - Shipped film-shaped (one `date` for every medium); fixed by the span work below.
-
-- **Keyboard-only add-and-log.** The add flow stopped at the pill: you could type a search
-  but needed the mouse to pick a hit, so `n` → search → log broke halfway. The model is
-  **type the title → ⏎ locks it in and hands focus to the results grid → arrows walk the
-  grid as it looks → ⏎ on a hit logs it**. Focus genuinely moves: each `.scard` is
-  `tabIndex={-1}` + `data-card` and owns its keys, so nav is real DOM focus, not a shadow
-  cursor.
-  - **2D arrows.** ←/→ step linearly (so they flow across row ends, Finder-style); ↑/↓ move by
-    a whole row, where the row width is `columnsOf()` — read off the laid-out DOM, since the
-    grid is `auto-fill` and the column count is whatever the width allows. ← from the first
-    hit and ↑ off the top row return to the title field, as do Esc and Backspace.
-  - **⇥ / ⇧⇥ cycle the category** from the field or the grid, instead of moving focus. The
-    panel therefore *always* shows the category strip (it used to hide when the rail had a
-    medium filter) — ⇥ has to be visible to be usable; its tabs are `tabIndex={-1}` with a ⇥
-    marker. `switchMedium` now **clears the results** on the way out (a fast ⏎ after ⇥ would
-    otherwise file a film as a TV show) and, in panel mode, leaves the re-search to the
-    debounced effect rather than firing a second provider call. A `catchFocus` ref carries
-    "you were on the grid" across the async gap and re-focuses the new first hit once the
-    search settles.
-  - On a hit: ⏎ log (opens the dialog), ⇧⏎ Plan, ⌥⏎ in-progress, ⌘⏎ details preview (itself
-    focusable, Esc/⏎ handled). A `.keyhints` legend row spells all of it out. With no matches,
-    ⏎ from the field files the typed title by hand.
-  - **Plumbing.** The field keeps focus until ⏎, so `OmniBox` gained `onAddKey(e) => boolean`
-    (offers each keystroke to the panel first — it claims only ⏎/↓/⇥) and `onModeChange`;
-    `AddEntryModal` publishes its handler via `keyHandlerRef` and gets focus back through
-    `onRefocusSearch`. `App` owns both refs, and **stands its single-key hotkeys down while
-    the pill isn't in filter mode** (`idle`) — focus on a card is not a text field, so `g`/`t`/
-    `n`/digits would otherwise fire under the open panel.
-  - `NoteEditor` gained ⌘/Ctrl+⏎ to commit from any field, Esc to cancel (stopPropagation, so
-    the app-wide Escape doesn't also fire), an `autoFocus` that puts the caret in the note
-    when the log dialog opens, and a `⌘⏎` legend on the submit (`.btn__key`, `aria-hidden` so
-    accessible names don't shift).
-  - `RatingCircles` was mouse-only: a key press reports no coordinates, so `valueAt` read
-    every one as a left-half hit and scored odd. Keyboard activation (`e.detail === 0`) now
-    takes the whole value; ←/→ nudge a half point, Backspace clears.
-  - `.omni__panel--add` restores `user-select: text` — the command list turns it off, and
-    WebKit honours that on form controls, which would make the log dialog's textarea
-    unselectable in the Tauri webview.
-  - Tests: `AddEntryModal.test.tsx` pins `columnsOf` directly (jsdom has no layout, so the
-    ↑/↓ arithmetic can't be driven through the rendered app), `Rating.test.tsx` covers the
-    keyboard scoring, and six keyboard passes through the real `<App />` in
-    `tests/integration/add-entry.test.tsx` cover ⏎-to-grid, ←/→ + clamping, Esc back to the
-    field, ⇥ from field and from grid, the log dialog + ⌘⏎ commit, and ⇧⏎ Plan. 167 frontend
-    tests.
-
-Known: user has reported bugs in the new views to be triaged.
-
-- **Floating pill: scroll masking (bugfix).** The 72px the pill needed was plain `padding-top`
-  on `.content` — transparent, so scrolled content slid up *around* the pill and reappeared
-  above/below it, and the detail page's sticky `Library/Trash` bar (`top: 0`) docked into that
-  unmasked strip. Now: a `--omni-band: 72px` token; `.omnibar::before` paints an opaque
-  full-width `var(--bg)` band (behind the pill via `z-index:-1` inside its stacking context) —
-  **solid, not a fade**: a fade over the last 14px still let a sliver of cover art show through
-  right above the docked bar, which is the whole complaint; the top room is a
-  scrolled-away `.content::before` spacer instead of container padding — with no padding on the
-  scroll container, a sticky child's offset is measured from the true top of the view, so
-  `.detail__bar { top: var(--omni-band) }` means exactly "docked under the pill" regardless of
-  how the engine treats scroll-container padding in the sticky rect. `.detail__cover` follows
-  (`calc(var(--omni-band) + 76px)`). CSS-only; jsdom has no layout, so it isn't test-covered.
-
-- **Resizable rail + a Sort control that stays put.** Three chrome bugs, one cause — the rail
-  was a fixed 178px box whose contents were free to overflow it or vanish from it.
-  - **Resizable.** `.rail` is now two boxes: the nav itself (fixed-width column, `position:
-    relative`) and an inner `.rail__scroll` that holds everything and does the scrolling — the
-    handle has to live *outside* the scrolling box or it scrolls away with the content.
-    `components/RailResizer.tsx` is the 9px grab strip on the right edge (pointer events, not
-    HTML5 DnD, same as `MediaChooser`); width comes from an inline style on `.rail`, persisted
-    by `lib/rail.ts` (`manifest-rail-width`, clamped 148–380, junk reads as the default).
-    It's a real `role="separator"`: ←/→ resize (⇧ = coarse), ⏎ toggles collapse, double-click
-    resets. **Collapse and resize are one gesture** — drag below `RAIL_SNAP` (120) and it snaps
-    to icons-only *without touching the stored width*, so dragging back out restores it; from
-    the keyboard, stepping left off the 148 floor collapses. Width is reported live during a
-    drag and only *persisted* on release. `body.is-resizing` holds the `col-resize` cursor when
-    the pointer outruns the strip. The strip takes `z-index: 16` itself (it overhangs 4px into
-    `.main`, so it must clear the pill's opaque band) — `.rail` must **not** take a z-index or
-    it would trap the Sort menu's `position: fixed` in its stacking context.
-  - **Sort keeps its slot when collapsed.** It used to be `display: none`, which removed a row
-    and reshuffled everything under it. `Dropdown` gained `compact` (icon-only trigger, via
-    `compactIcon` — there's no room for a glyph *and* a label, so the expanded trigger stays
-    text-only) and the collapsed rail dresses it as a `railkey`. With no visible value the
-    accessible name has to carry it (`"Sort: Recently finished"`). `.rail .brand` also got a
-    fixed 50px height so dropping the ｽﾍﾟｯｸ line on collapse doesn't shift the stack either.
-  - **Nothing runs off its box.** `.dropdown__value` and `.railkey__label` are `flex:1;
-    min-width:0` + ellipsis (full text stays in the tooltip and the open menu); the menu is
-    clamped to the window and scrolls (`place()` measures the room and flips the menu *above*
-    the trigger when the window is short); `.rail` is capped at `45vw`.
-  - **Dropdown is keyboard-operable** like the native `<select>` it replaces: focus stays on
-    the trigger and drives the list through `aria-activedescendant` (↑/↓/Home/End, ⏎, Esc,
-    ↑/↓ to open). An open menu `stopPropagation`s every key — focus is on a button, not a text
-    field, so `g`/`t`/digits would otherwise fire an app hotkey under the open list.
-  - **Collapsing may only remove text.** First pass still moved everything: the legends were
-    `display:none` (−18px per group), the collapsed rail had its own `gap`/`padding`, and each
-    control sized itself off its own font. Now the rail is measured in px tokens —
-    `--rail-key-h: 35px`, `--rail-key-px: 12px` (key inset), `--rail-pad-x: 14px` (rail inset)
-    — shared by `.railkey` *and* the Sort trigger; the collapsed rail changes **no** gap, no
-    padding and no height; the legend keeps its line box (`color: transparent`) but draws
-    **nothing** in its place — a hairline there landed just under the brand's own rule and read
-    as a double line at the top of the rail, and collapsing may only ever *remove* something;
-    `.rail .brand` is a fixed 50px, top-aligned, so dropping
-    the ｽﾍﾟｯｸ line doesn't lift the wordmark. Collapsed width is therefore **71px**, not a round
-    number: rail inset + key inset + border + a 16px glyph — an expanded key trimmed to its
-    icon, so the icons don't move sideways either. `RAIL_COLLAPSED_WIDTH` mirrors it.
-    Verified by rendering `global.css` in headless Firefox and diffing every row's top/height/
-    icon-x between the two states: **0.0px drift** (jsdom can't do this — no layout engine).
-  - **One cover size everywhere.** A collapsed section renders a flex `.shelf` (hard 150px
-    cards) and an expanded one a `.grid` (`minmax(152px, 1fr)`), so *opening a section resized
-    every cover in it*. CSS can't derive one from the other — a flex row can't resolve a grid
-    track — so `LibraryGrid` measures its own column (`ResizeObserver` on `.sections`, callback
-    ref so it also attaches when the grid appears after an empty library), resolves what
-    auto-fill would give (`cardWidth()`, exported + unit-tested) and publishes it as `--card-w`.
-    Both layouts use fixed `var(--card-w, …)` tracks with the old values as the pre-measurement
-    fallback. Same width, same 22px gap → a card sits on the same x whether its section is open
-    or shut, and the row still fills the column.
-  - `src/test/setup.ts` now polyfills `PointerEvent` + pointer capture: jsdom has neither, and
-    without the constructor `fireEvent.pointerDown` silently degrades to a bare `Event` and
-    drops `button`/`clientX`, so pointer-driven UI looks inert under test. Tests: `RailResizer`
-    (9 — drag/clamp/snap/keyboard/reset), `Dropdown` keyboard + compact, `lib/rail` width,
-    `cardWidth` (fills the row, never below the minimum), `Rating` (odd/even targets, hover
-    preview, one tab stop), the game log wording, and three passes through the real `<App />`
-    (collapsing keeps the rail's key count and Sort still works; a keyboard resize round-trips
-    to `localStorage`; a page's Back/Trash land in the header and clear out on leaving).
-    217 frontend tests.
-  - **One header row.** The detail and review pages each stacked their own bar under the
-    floating pill (`.detail__bar`, sticky at `top: var(--omni-band)`) — two rows of chrome for
-    one page. `.omnibar` is now a three-column grid (`minmax(0,1fr) auto minmax(0,1fr)`, gutter
-    matching `.content`) so the pill stays dead-centre whatever the sides hold, and
-    `components/HeaderSlot.tsx` portals a view's own actions into the left/right slots
-    (`HEADER_SLOT_ID`). A **portal, not props**: the markup belongs to the header but the state
-    belongs to the view — Trash owns a confirm, a busy flag and an error, and lifting all that
-    into `App` to move a button would be the worse trade. The host is App's element, mounted in
-    the same commit, so it's looked up in a *layout* effect (before paint, no late flash).
-    Empty slots are `pointer-events: none` so the strip beside the pill isn't a dead zone;
-    `.detail__cover` now only has to clear the band itself. Standalone view tests must stand up
-    the two host divs (see `EntryDetail.test.tsx`).
-  - **Every score is a real target (rating fix).** `RatingCircles` was one button per circle
-    that worked out which half you hit from `getBoundingClientRect` — so odd scores were
-    unreachable whenever that read the wrong side, and jsdom (no layout) could never test it:
-    the suite only covered the keyboard path, which deliberately took whole circles. Now each
-    circle contains two transparent buttons, left = odd, right = even, with the visual circle
-    around them. No arithmetic, ten explicit targets, and the mouse path is finally unit-tested.
-    Keyboard stays one tab stop (roving `tabIndex` on the current score; ←/→ nudge a point and
-    carry focus with them; Backspace clears).
-  - **`VERBS[medium].log` is a whole phrase now**, not a noun in "Log a ___". English articles
-    don't template, and the noun that fits isn't always a single sitting: games read **"Log
-    playtime"** — "Log a session" said one sitting while the editor (correctly) asked for a
-    From → To stretch, which is the film-shaped mistake wearing game clothes. Others: "Log a
-    watch" (film/tv/anime), "Log a read" (book/manga), "Log a listen" (music).
-  - **Per-medium grouping is one rule now.** `In Progress` was the only category carrying
-    `byMedium: true`, so it split into Films / Games / … rows while Done, Backlog, Wishlist and
-    Dropped stayed a mixed pile — defensible (working list vs archive) but it reads as
-    arbitrary. The flag is gone: **collapsed = one mixed shelf, expanded = a grid per medium**,
-    for every category. Collapsed answers "what's in here?" in one row whatever the medium;
-    expanding is when you're actually looking, and that's when the split earns its sub-headers
-    (which still hide themselves when only one medium is present — including whenever the rail
-    filters to one). `ByMedium` lost its `expanded`/`onExpand` props and is now just the
-    expanded renderer.
-  - **Checking CSS geometry:** headless Firefox renders `global.css` against a hand-built
-    markup probe and prints measured rects (`firefox --headless --screenshot page.html`, read
-    the PNG). Worth reaching for whenever a complaint is "things move / resize" — jsdom has no
-    layout, so those bugs are invisible to the test suite.
-
-- **Logging over time (spans).** The fix for the film-shaped log: you don't watch a season on
-  a Tuesday. A log block can now carry a **span**, so the question the editor asks matches the
-  medium.
-  - **Storage.** `build_block` in `store.rs` takes an `end: Option<&str>` and writes
-    `START..END` on the header line (dropping it when `end` is absent or equal to the start,
-    so single days stay bare). `append_note`/`edit_note` and both Tauri commands thread it
-    through; `api.ts`'s `appendNote`/`updateNote` take `end` as a trailing optional arg.
-  - **Parsing.** `NoteBlock` gains `end?`. `parseNotes` reads `..` / `→` / `–` / `—` / `-` /
-    `to` (liberal in, `..` out) and collapses a same-day span. New helpers: `formatSpan`
-    (display, `2026-03-01 → 2026-03-19`) and `spanCovers` (ISO dates compare as strings,
-    which is the point of the format).
-  - **The editor.** `NoteEditor` branches on `PROGRESS[medium].single`: film and music keep
-    one **Date**; everything else gets **From → To**, with From optional (blank = the single
-    day you finished, i.e. the old behaviour). They're deliberately *not* labelled
-    Started/Finished — those are the entry's own fields further up the same page, and a
-    reread's stretch is a different thing. Internally `date` holds the *end* so the primary
-    field is the same control in both shapes; `submit` reorders to chronological.
-  - **Entry dates.** Committing a log fills the entry's `started`/`finished` from what you
-    typed — but only for serial media, and in `EntryDetail` only when they're still empty (a
-    reread must not rewrite when you first read it). Film and music are left alone on purpose:
-    they have no Dates section, and an invisible `finished` key is exactly the phantom
-    timeline row that got removed earlier.
-  - **Timeline.** A span lands on the day it *ended* (the "I finished it" moment) and carries
-    `from`; the card shows "over N days". The `finished`-date fallback now dedupes against the
-    whole span via `spanCovers`, not just an exact date match.
-  - Tests: `a_log_block_can_span_a_range_of_dates` (Rust, 15 backend tests), span parsing +
-    separators + helpers in `notes.test.ts`, end-date placement and dedupe in
-    `timeline.test.ts`, per-medium editor shape and the `started`/`finished` fill rules in
-    `EntryDetail.test.tsx`, and two passes through the real App (a TV show logged over a
-    range; a film still logged as one sitting). 189 frontend tests.
-
-v1 core loop complete. Next: import from other trackers, custom media types, more frontend
-tests (component/view level).
-
-- **Backend integration suite added.** `src-tauri/tests/` (Cargo's convention — each file is a
-  separate crate linking `manifest_lib`, so it exercises only the public surface). `lib.rs`'s
-  `mod library` is now `pub mod library` so the test crate can reach `library::{store,schema}`.
-  `tests/common/mod.rs` = a `TempLib` RAII temp-dir (no `tempfile` dep, to keep the offline nix
-  build lean). Three suites (12 tests): `store_lifecycle` (create→load→patch→note edit/delete→
-  set_status→trash lifecycle, cross-medium `load_all` sort, clobber refusal, error paths),
-  `format_preservation` (the prime directive: comments/key-order/unknown-key survival through
-  `patch_entry`, notes never rewritten by `append_note`, external hand-edits picked up on read),
-  and `library_scan` (a broken file doesn't blank the shelf, `.trash`/non-toml ignored, tags +
-  unknown "totals" survive). The watcher (`watch.rs`) isn't integration-tested — it needs a live
-  Tauri `AppHandle`.
-
-- **`nix flake check` wired up.** `flake.nix` gains a `checks` output running both suites in the
-  sandbox: `backend` (a test-only `buildRustPackage` — crates vendored from `Cargo.lock`, a stub
-  `../dist/index.html` to satisfy `generate_context!`, `cargo test` offline, never links the app
-  binary) and `frontend` (`buildNpmPackage` + `npm test`). Note flake eval only sees git-tracked
-  files, so newly added tests must be `git add`ed before `nix flake check` picks them up; the
-  frontend `npmDepsHash` in the flake must be refreshed (`nix run nixpkgs#prefetch-npm-deps --
-  package-lock.json`) whenever `package-lock.json` changes.
-
-Dev loop: `nix develop -c npm run tauri dev`. Tests: `nix develop -c bash -c 'cd src-tauri &&
-cargo test'` (Rust) and `nix develop -c npm test` (frontend); or `nix flake check` to run both
-suites hermetically.
+Export to plain text/JSON (so the data is never only in a database), import from other
+trackers, custom media types. Known: the user has UI bugs to report. Get the concrete list and
+reproduce each one before changing CSS.

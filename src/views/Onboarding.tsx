@@ -133,10 +133,11 @@ export function Onboarding({
           <div className="wizard__pane">
             <h2>Choose a library folder</h2>
             <p>
-              Your films, TV, anime, books, manga, games, and music live here as
-              plain <code>.toml</code> files you own and can read in any editor.
-              manifest just watches this folder — pick an empty one to start, or
-              an existing library to open it.
+              Your films, TV, anime, books, manga, games, and music are saved here
+              in one file, <code>library.sqlite</code> — back up or sync the folder
+              and you have everything. Pick an empty folder to start, or an
+              existing library to open it. An older library of <code>.toml</code>{" "}
+              files is imported automatically (the files are left as they are).
             </p>
             {path ? (
               <div className="wizard__chosen">
@@ -216,9 +217,7 @@ export function Onboarding({
           <div className="wizard__pane">
             <h2>You're all set</h2>
             <p>
-              manifest is watching your folder. Hit <strong>+ Add</strong> to log
-              your first title, or edit the <code>.toml</code> files by hand —
-              either way the app keeps up.
+              Hit <strong>+ Add</strong> to log your first title.
             </p>
             <dl className="wizard__summary">
               <dt>Folder</dt>

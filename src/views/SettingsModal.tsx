@@ -103,7 +103,7 @@ export function SettingsModal({
         <div className="section">
           <div className="section__label">Library</div>
           <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
-            The folder manifest is watching. Keep separate libraries — per person,
+            The folder your library is saved in. Keep separate libraries — per person,
             or one for you and one for someone else on this machine — and switch
             between them here. Nickname each so they're easy to tell apart;
             nothing on disk is moved or changed.

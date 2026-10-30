@@ -1,6 +1,6 @@
 // User-chosen set + order of media categories. This governs which category tabs
 // the UI surfaces (rail filters + the Add flow) and in what order — the library
-// on disk is untouched, and entries of a hidden medium are never dropped.
+// itself is untouched, and entries of a hidden medium are never dropped.
 // Persisted in localStorage like theme/accent. At least one medium is always
 // enabled.
 

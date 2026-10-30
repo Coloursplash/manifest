@@ -3,24 +3,30 @@
 ## One line
 
 A local-first, open-source media tracker — Letterboxd for films, TV, anime, books, manga,
-videogames, and music — where **your data lives on your disk as plain human-readable files** and the GUI is
-just a beautiful lens over them.
+videogames, and music — where **your data lives on your disk, in one open-format file you
+own**, and the GUI is just a beautiful lens over it.
 
 ## The problem
 
 Existing trackers (Letterboxd, Trakt, MyAnimeList, Goodreads, Serializd…) host your data.
-You can't read it without their app, you can't grep it, you can't back it up as text, and
-if they shut down or change terms, your years of notes are gone or locked behind an export
-button. manifest inverts that: the files are the product, the app is optional.
+You can't read it without their app, you can't back it up yourself, and if they shut down
+or change terms, your years of notes are gone or locked behind an export button. manifest
+inverts that: the library file is the product, the app is optional.
 
 ## Core principles (non-negotiable)
 
-1. **Files are the source of truth.** Every entry is a plain `.toml` file on disk. The app
-   reads and writes those files; it never hides data in a private database. Delete the app
-   and your library is still fully intact and readable in any text editor.
-2. **Human-readable, hand-editable.** A user must be able to open an entry in `vim` or VS
-   Code, edit it, and have the GUI reflect the change. Round-tripping must preserve the
-   user's formatting, key order, and comments as faithfully as possible.
+1. **Your library is one file you own.** Everything lives in `library.sqlite` inside the
+   folder you choose — SQLite, the most widely readable database format there is. Copy
+   the folder and you've backed up everything; delete the app and the library is intact,
+   readable by any SQLite tool (`sqlite3`, DB Browser, Datasette, Python…).
+2. **Never lose what the user wrote.** Every write is a transaction (all or nothing).
+   Deleting an entry moves it to the trash rather than erasing it. Input is validated
+   before it's stored, so bad data can't get in.
+
+   *(Until v1.5 the library was one hand-editable `.toml` file per entry. It moved to
+   SQLite because the hand-rolled text format for the log was the source of most data
+   bugs. Hand-editing in a text editor is the trade-off. An old `.toml` library is
+   imported automatically, once, and its files are left untouched.)*
 3. **Local-first & offline.** No account, no server, no telemetry. Covers and metadata are
    fetched once from public APIs and cached locally so the library works with no network.
 4. **One format across all media.** Films, TV, anime, books, manga, videogames, and music
@@ -31,43 +37,37 @@ button. manifest inverts that: the files are the product, the app is optional.
 
 ## The data format
 
-One file per entry, TOML. Example (`library/films/blade-runner-2049.toml`):
+Two tables in `library.sqlite`:
 
-```toml
-title = "Blade Runner 2049"
-director = "Denis Villeneuve"
-year = 2017
-cover = "https://image.tmdb.org/.../br2049.jpg"
+- **entries** — one row per title: `title`, `year`, `cover`, `status`, `rating`, `tags`,
+  `owned`, `started`/`finished`, `progress`, `season`, and an `extra` JSON object for the
+  per-medium metadata (director, author, episodes, …).
+- **logs** — the dated diary: one row per log, each a day or a span of days, with tags
+  (`rewatch`, `reread`, …) and a free-text body that can run to as many paragraphs as you
+  like.
 
-notes = """
-2017-10-06 (IMAX)
-The pacing is incredibly deliberate, and I love that it didn't try to just copy the
-original. The brutalist architecture in the Wallace Corp scenes is amazing.
-
-2026-07-09 (Digital)
-Watching this again nearly a decade later, the sound design stands out way more than the
-visuals this time. The low-end synth pulses literally shake the room.
-"""
+```
+entries:  film/blade-runner-2049 | Blade Runner 2049 | 2017 | done | 9 | {"director": "Denis Villeneuve"}
+logs:     2017-10-06             |            |         | (IMAX) The pacing is incredibly deliberate…
+          2026-07-09             |            | rewatch | The sound design stands out way more…
+          2026-03-01 → 2026-03-19 (a book read over three weeks)
 ```
 
-The exact schema (shared fields + per-medium fields + status/list fields) is defined in
-`CLAUDE.md` and will evolve; the format above is the anchor.
+The exact schema lives in `src-tauri/src/library/db.rs` and is summarised in `CLAUDE.md`.
 
 ## What the app does
 
 - **Auto-fetch** covers and metadata by title/search (TMDB, AniList, Open Library, Google
   Books) and cache cover images locally.
 - **Fast search** across the whole library.
-- **Watch/read lists & status** — want-to / in-progress / finished, per entry, stored in
-  the file itself.
+- **Watch/read lists & status** — want-to / in-progress / finished, per entry.
 - **Browse & visualise** the library two ways: a grid/shelf view (grouped by status —
   in-progress / backlog / wishlist / done, where backlog vs wishlist is "own it" vs "would
   have to buy it", for the media you buy) and a **timeline/diary** view that scrolls your dated
   watch/read events by month and year, Letterboxd-style, with per-year summaries.
 - **Sort** the library by name, recently finished, recently released, or your own score.
-- **View & append notes** — especially quick "log a new dated entry" for a rewatch/reread.
-  These dated log blocks are exactly what the timeline is built from.
-- Never require any of the above: hand-editing files always works.
+- **View & add to the log** — especially quick "log a new dated entry" for a rewatch/reread.
+  These dated logs are exactly what the timeline is built from.
 
 ## Aesthetic
 
@@ -77,21 +77,24 @@ type, grid layouts, a little playfulness. The UI should feel like a piece of har
 
 ## Scope
 
-**In scope (v1):** the 5 media types, TOML files, auto-fetch + cover cache, search, status/
-lists, grid browse, note viewing/appending, TE-styled UI.
+**In scope (v1):** the media types, a local library, auto-fetch + cover cache, search,
+status/lists, grid browse, the dated log, TE-styled UI.
 
 **Done (v1.2):** timeline/diary view + grouped, collapsible grid + sort controls + a
-dedicated "Year in Review" summary page. All derived client-side from the dated `notes` log
-+ `finished` dates — no new storage.
+dedicated "Year in Review" summary page. All derived client-side from the dated log +
+`finished` dates — no new storage.
 
-**Later:** deeper stats/insights, import from Letterboxd/MAL/Goodreads exports, custom media
-types, tags/collections, multi-device sync via the user's own git repo or file-sync tool.
+**Done (v1.5):** the library moved from per-entry `.toml` files to one `library.sqlite`.
+
+**Later:** export to plain text/JSON/CSV (so the data is never only in a database), deeper
+stats/insights, import from Letterboxd/MAL/Goodreads exports, custom media types,
+tags/collections, multi-device sync via the user's own file-sync tool.
 
 **Explicitly out of scope:** any hosted backend, accounts, social features, telemetry, or
 storing user data anywhere but the user's chosen library folder.
 
 ## Success looks like
 
-Someone clones the repo, points manifest at a folder, logs a few films, then opens that
-folder in a text editor and finds clean TOML they'd have been happy to write by hand — and
-they can back it up by committing it to their own git repo.
+Someone clones the repo, points manifest at a folder, logs a few films, and their whole
+library is one file in that folder — easy to back up, readable by any SQLite tool, and
+never at the mercy of a service shutting down.
