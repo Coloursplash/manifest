@@ -32,8 +32,8 @@
         # WebKit) comes from stdenv — same as the dev shell, which builds with
         # just libiconv. On Linux, Tauri needs the WebKitGTK stack.
         backendBuildInputs = with pkgs;
-          lib.optionals stdenv.isDarwin [ libiconv ]
-          ++ lib.optionals stdenv.isLinux [
+          lib.optionals stdenv.hostPlatform.isDarwin [ libiconv ]
+          ++ lib.optionals stdenv.hostPlatform.isLinux [
             glib
             gtk3
             webkitgtk_4_1
@@ -67,9 +67,9 @@
 
           nativeBuildInputs = with pkgs;
             [ cargo-tauri.hook nodejs_22 npmHooks.npmConfigHook pkg-config ]
-            ++ lib.optionals stdenv.isLinux [ wrapGAppsHook3 ];
+            ++ lib.optionals stdenv.hostPlatform.isLinux [ wrapGAppsHook3 ];
           buildInputs = backendBuildInputs
-            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.glib-networking ];
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.glib-networking ];
 
           # The suites run in `checks`; don't repeat them in every install.
           doCheck = false;
@@ -91,7 +91,7 @@
         apps.default = {
           type = "app";
           program =
-            if pkgs.stdenv.isDarwin
+            if pkgs.stdenv.hostPlatform.isDarwin
             then "${manifest}/Applications/manifest.app/Contents/MacOS/manifest"
             else "${manifest}/bin/manifest";
         };
@@ -166,7 +166,7 @@
           ]
           # macOS: Tauri renders via the system WKWebView, so we mainly need
           # libiconv + a couple of frameworks rather than a Linux WebKitGTK stack.
-          ++ lib.optionals stdenv.isDarwin [
+          ++ lib.optionals stdenv.hostPlatform.isDarwin [
             libiconv
           ];
 

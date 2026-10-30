@@ -126,6 +126,12 @@ monospace-leaning type, snappy mechanical motion. Bespoke CSS, no UI kit, no ext
 - **WebKit honours `user-select: none` on form controls.** `.omni__panel--add` turns selection
   back on so the log textarea works.
 
+## Never push without asking
+
+**Don't `git push`, open a pull request, or otherwise publish anything (releases, tags, repo
+settings) without the user's explicit approval for that specific action.** Committing locally
+is fine. Approval for one push doesn't cover the next. Ask each time.
+
 ## Conventions
 
 - Rust: `rustfmt` + `clippy --all-targets` clean. Command handlers stay thin; logic lives in

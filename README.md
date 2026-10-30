@@ -1,5 +1,12 @@
 # manifest
 
+> [!WARNING]
+> **This app is entirely vibe coded.** It was written by AI coding agents (Claude) with a
+> human steering, not hand-written by an experienced engineer. It works for its author and
+> it has tests, but expect bugs, rough edges and code that hasn't had a careful human
+> review. Keep backups of your library, and treat it as a hobby project, not a polished
+> product.
+
 A local-first media tracker — like Letterboxd, but for **films, TV, anime, books, manga,
 videogames and music** — and your data never leaves your disk. Your whole library is one
 `library.sqlite` file in a folder you choose. manifest is a
