@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" width="128" alt="manifest logo" />
+  <img src="src-tauri/icons/icon.svg" width="128" alt="manifest logo" />
 </p>
 
 <h1 align="center">manifest</h1>
@@ -135,7 +135,7 @@ src/
   components/  pill (OmniBox), rail, log list + editor, rating, cover, …
   lib/         typed API wrappers, types, and pure logic (sort, filter, timeline, logs)
   styles/      the TE design system
-docs/          logo + README screenshots
+docs/          README screenshots
 ```
 
 The app icon's source is `src-tauri/icons/icon.svg`. To change it, export a 1024px PNG and
