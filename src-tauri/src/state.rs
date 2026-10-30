@@ -1,8 +1,8 @@
 //! Managed app state and its on-disk config.
 //!
-//! The *library* (user data) lives in `library.sqlite` inside the folder the
-//! user chose. This small `config.json` — a pointer to that folder plus API
-//! keys — lives in the OS app-config dir and never holds library data.
+//! The *library* (user data) is the one SQLite file the user chose. This small
+//! `config.json` (a pointer to that file plus API keys) lives in the OS
+//! app-config dir and never holds library data.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -11,9 +11,9 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::library::db::Db;
+use crate::library::db::{library_file, Db};
 
-/// Tauri-managed state: the open library database, once a folder is chosen.
+/// Tauri-managed state: the open library database, once a file is chosen.
 #[derive(Default)]
 pub struct AppState {
     pub db: Mutex<Option<Db>>,
@@ -25,21 +25,22 @@ impl AppState {
         let mut guard = self.db.lock().unwrap_or_else(|p| p.into_inner());
         let db = guard
             .as_mut()
-            .ok_or_else(|| anyhow!("no library folder selected yet"))?;
+            .ok_or_else(|| anyhow!("no library chosen yet"))?;
         f(db)
     }
 
-    /// The open library's folder, if any.
+    /// The open library's file, if any.
     pub fn library_path(&self) -> Option<PathBuf> {
         let guard = self.db.lock().unwrap_or_else(|p| p.into_inner());
-        guard.as_ref().map(|db| db.root().to_path_buf())
+        guard.as_ref().map(|db| db.path().to_path_buf())
     }
 }
 
-/// Persisted app config: a pointer to the library folder and the user's API
+/// Persisted app config: a pointer to the library file and the user's API
 /// keys. Note this is the *only* thing outside the library that we persist.
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
+    /// The library file. Older configs hold its folder; see [`library_file`].
     pub library: Option<String>,
     #[serde(default)]
     pub tmdb_api_key: Option<String>,
@@ -106,16 +107,17 @@ pub fn rawg_key(app: &AppHandle) -> Option<String> {
         .filter(|k| !k.trim().is_empty())
 }
 
-/// Point manifest at `root`: open (or create) its database and remember the
-/// folder in config. Reused on startup to restore the last library and by the
-/// "choose folder" command.
-pub fn activate_library(app: &AppHandle, root: &Path) -> Result<()> {
-    let db = Db::open(root)?;
+/// Point manifest at the library `path` names: open (or create) the file and
+/// remember it in config. A folder from an older config resolves to its
+/// `library.sqlite`, and the config is rewritten to the file. Returns the file.
+pub fn activate_library(app: &AppHandle, path: &Path) -> Result<PathBuf> {
+    let file = library_file(path);
+    let db = Db::open(&file)?;
     let state = app.state::<AppState>();
     *state.db.lock().unwrap_or_else(|p| p.into_inner()) = Some(db);
 
     update_config(app, |cfg| {
-        cfg.library = Some(root.to_string_lossy().to_string());
+        cfg.library = Some(file.to_string_lossy().to_string());
     })?;
-    Ok(())
+    Ok(file)
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   basename,
+  defaultName,
   getLibraries,
   recordLibrary,
   renameLibrary,
@@ -40,10 +41,34 @@ describe("getLibraries", () => {
   });
 });
 
+describe("defaultName", () => {
+  it("uses the file name without .sqlite", () => {
+    expect(defaultName("/home/chris/ours.sqlite")).toBe("ours");
+  });
+  it("uses the folder name for the default library.sqlite", () => {
+    expect(defaultName("/home/chris/Films/library.sqlite")).toBe("Films");
+    expect(defaultName("C:\\Users\\chris\\Films\\library.sqlite")).toBe("Films");
+  });
+});
+
 describe("recordLibrary", () => {
-  it("adds a new library most-recent-first, defaulting the name to basename", () => {
-    recordLibrary("/home/chris/films");
-    expect(getLibraries()).toEqual([{ path: "/home/chris/films", name: "films" }]);
+  it("adds a new library most-recent-first, defaulting the name", () => {
+    recordLibrary("/home/chris/films/library.sqlite");
+    expect(getLibraries()).toEqual([
+      { path: "/home/chris/films/library.sqlite", name: "films" },
+    ]);
+  });
+
+  it("folds a saved folder row into its library file, keeping the nickname", () => {
+    // Lists saved before libraries were files hold the folder.
+    recordLibrary("/home/chris/Library");
+    renameLibrary("/home/chris/Library", "Mine");
+    recordLibrary("/other/library.sqlite");
+    recordLibrary("/home/chris/Library/library.sqlite");
+    expect(getLibraries()).toEqual([
+      { path: "/home/chris/Library/library.sqlite", name: "Mine" },
+      { path: "/other/library.sqlite", name: "other" },
+    ]);
   });
 
   it("moves an existing path to the front and preserves its nickname", () => {
@@ -71,9 +96,9 @@ describe("renameLibrary", () => {
     renameLibrary("/a", "  My Films  ");
     expect(getLibraries()[0].name).toBe("My Films");
   });
-  it("empty/whitespace name falls back to basename", () => {
-    recordLibrary("/home/chris/tv");
-    renameLibrary("/home/chris/tv", "   ");
+  it("empty/whitespace name falls back to the default name", () => {
+    recordLibrary("/home/chris/tv.sqlite");
+    renameLibrary("/home/chris/tv.sqlite", "   ");
     expect(getLibraries()[0].name).toBe("tv");
   });
 });
@@ -95,7 +120,7 @@ describe("nameFor", () => {
     const list = [{ path: "/a", name: "Alpha" }];
     expect(nameFor("/a", list)).toBe("Alpha");
   });
-  it("falls back to basename when the path is not in the list", () => {
-    expect(nameFor("/home/chris/games", [])).toBe("games");
+  it("falls back to the default name when the path is not in the list", () => {
+    expect(nameFor("/home/chris/games/library.sqlite", [])).toBe("games");
   });
 });

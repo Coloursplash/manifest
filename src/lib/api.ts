@@ -5,15 +5,19 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 
 import type { Candidate, CreatePayload, Entry, Medium } from "./types";
 
-// --- library folder ---
+// --- library file ---
 
 export const getLibraryPath = () => invoke<string | null>("get_library_path");
 
-export const chooseLibraryFolder = () =>
-  invoke<string | null>("choose_library_folder");
+/** Pick an existing library file; resolves to its path, or null if cancelled. */
+export const openLibrary = () => invoke<string | null>("open_library");
 
-export const setLibraryFolder = (path: string) =>
-  invoke<Entry[]>("set_library_folder", { path });
+/** Save dialog for a new library file; resolves to its path, or null. */
+export const newLibrary = () => invoke<string | null>("new_library");
+
+/** Activate a library by path; resolves to the file it names (an old folder
+ *  path resolves to the `library.sqlite` inside it). */
+export const setLibrary = (path: string) => invoke<string>("set_library", { path });
 
 // --- entries ---
 

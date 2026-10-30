@@ -1,12 +1,12 @@
-// Recently-used library folders + user nicknames. This is app state (not
+// Recently-used library files + user nicknames. This is app state (not
 // library data), so it lives in localStorage alongside theme/accent — never in
-// the user's library folder. Kept most-recent-first and capped.
+// the user's library. Kept most-recent-first and capped.
 
 import { readPref, writePref } from "./prefs";
 
 export interface Library {
   path: string;
-  /** Nickname; defaults to the folder's basename. */
+  /** Nickname; defaults to `defaultName(path)`. */
   name: string;
 }
 
@@ -17,6 +17,22 @@ const MAX = 8;
 export function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
+}
+
+/** Everything before the last separator ("" when there is none). */
+function dirname(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const i = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return i > 0 ? trimmed.slice(0, i) : "";
+}
+
+/** A library's name before the user picks one: the file name without its
+ *  extension, or the folder's name for the default `library.sqlite` (which
+ *  would otherwise name every library "library"). */
+export function defaultName(path: string): string {
+  const file = basename(path);
+  const stem = file.replace(/\.sqlite$/i, "");
+  return stem === "library" ? basename(dirname(path)) || stem : stem;
 }
 
 export function getLibraries(): Library[] {
@@ -42,22 +58,25 @@ function save(list: Library[]): Library[] {
   return list;
 }
 
-/** Record `path` as the most-recently-used library, preserving any existing
- *  nickname. Returns the updated list (most-recent-first, capped at MAX). */
+/** Record the library file `path` as most-recently-used, preserving any
+ *  existing nickname. Lists saved before libraries were files hold the file's
+ *  folder instead; that row is the same library, so it is folded into this one
+ *  (nickname kept). Returns the updated list (most-recent-first, capped). */
 export function recordLibrary(path: string): Library[] {
   const list = getLibraries();
-  const existing = list.find((l) => l.path === path);
-  const name = existing?.name ?? basename(path);
-  const rest = list.filter((l) => l.path !== path);
+  const same = (l: Library) => l.path === path || l.path === dirname(path);
+  const existing = list.find((l) => l.path === path) ?? list.find(same);
+  const name = existing?.name ?? defaultName(path);
+  const rest = list.filter((l) => !same(l));
   return save([{ path, name }, ...rest].slice(0, MAX));
 }
 
-/** Set a nickname; an empty name falls back to the folder's basename. */
+/** Set a nickname; an empty name falls back to the default name. */
 export function renameLibrary(path: string, name: string): Library[] {
   const trimmed = name.trim();
   return save(
     getLibraries().map((l) =>
-      l.path === path ? { ...l, name: trimmed || basename(path) } : l,
+      l.path === path ? { ...l, name: trimmed || defaultName(path) } : l,
     ),
   );
 }
@@ -66,8 +85,8 @@ export function removeLibrary(path: string): Library[] {
   return save(getLibraries().filter((l) => l.path !== path));
 }
 
-/** Display name for the active path, falling back to its basename. */
+/** Display name for the active path, falling back to its default name. */
 export function nameFor(path: string | null, list: Library[]): string {
   if (!path) return "";
-  return list.find((l) => l.path === path)?.name ?? basename(path);
+  return list.find((l) => l.path === path)?.name ?? defaultName(path);
 }

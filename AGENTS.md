@@ -12,9 +12,11 @@ A Tauri 2 desktop app: a Rust core and a React + TypeScript webview.
 
 ## Rule 1: never lose what the user wrote
 
-- The library is **one SQLite file, `library.sqlite`, in the folder the user picked**. Nothing
+- The library is **one SQLite file the user picked** (`library.sqlite` by default). Nothing
   else holds library data. App preferences (theme, sort, rail width, …) go in localStorage
-  via `lib/prefs.ts`; the folder pointer and API keys go in the OS app-config `config.json`.
+  via `lib/prefs.ts`; the file pointer and API keys go in the OS app-config `config.json`.
+  Older configs and recent-library lists hold the *folder*; `library_file` (db.rs) and
+  `recordLibrary` (libraries.ts) resolve or fold that to the `library.sqlite` inside it.
 - Every write is **one transaction** in `library/db.rs`. Validate at that boundary (dates are
   `YYYY-MM-DD`, spans don't run backwards, typed fields have the right type); refuse bad
   input rather than storing it.
@@ -47,7 +49,7 @@ not a `finished` field, so `lib/logs.ts` has `lastDone`), and the timeline only 
 library.sqlite ──► src-tauri/src/library/db.rs     Db: list/get/create/patch, add/update/delete_log, trash
                    src-tauri/src/library/import.rs one-time import of a legacy .toml library
                    src-tauri/src/library/schema.rs Entry, LogEntry, Medium, Status (serialised to JSON)
-                   src-tauri/src/state.rs          AppState { db }, config.json (folder + API keys)
+                   src-tauri/src/state.rs          AppState { db }, config.json (library file + API keys)
                    src-tauri/src/fetch/*.rs        TMDB, AniList, Open Library, RAWG, MusicBrainz
                    src-tauri/src/cover.rs          cover download → OS cache dir
                    src-tauri/src/commands.rs       thin #[tauri::command]s over the above

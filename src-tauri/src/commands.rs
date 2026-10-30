@@ -3,11 +3,11 @@
 
 use serde::Deserialize;
 use tauri::{AppHandle, State};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, FileDialogBuilder, FilePath};
 
 use crate::cover;
 use crate::fetch::{self, Candidate};
-use crate::library::db::{LogDraft, NewEntry};
+use crate::library::db::{LogDraft, NewEntry, DB_FILE};
 use crate::library::{Entry, Medium};
 use crate::state::{self, AppState};
 
@@ -16,7 +16,7 @@ fn err<E: std::fmt::Display>(e: E) -> String {
     format!("{e:#}")
 }
 
-/// The currently open library folder, if any.
+/// The currently open library file, if any.
 #[tauri::command]
 fn get_library_path(state: State<AppState>) -> Option<String> {
     state
@@ -24,42 +24,60 @@ fn get_library_path(state: State<AppState>) -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
-/// Open a native folder picker; on selection, activate that folder as the
-/// library and return its path. Returns `None` if the user cancels.
-#[tauri::command]
-async fn choose_library_folder(app: AppHandle) -> Result<Option<String>, String> {
-    // Must be async: sync commands run on the main thread, and blocking there
-    // while the native dialog waits on the same thread's event loop deadlocks.
-    // Offload the blocking picker to a worker thread; the main thread stays
-    // free to drive the dialog.
-    let picker = app.clone();
-    let folder =
-        tauri::async_runtime::spawn_blocking(move || picker.dialog().file().blocking_pick_folder())
-            .await
-            .map_err(err)?;
-
-    let Some(folder) = folder else {
+/// Run a native file dialog off the main thread, then activate the library
+/// file the user chose and return its path. `None` if they cancel.
+///
+/// The commands using it must be async: sync commands run on the main thread,
+/// and blocking there while the dialog waits on that thread's event loop
+/// deadlocks.
+async fn pick_library(
+    app: AppHandle,
+    pick: impl FnOnce(FileDialogBuilder<tauri::Wry>) -> Option<FilePath> + Send + 'static,
+) -> Result<Option<String>, String> {
+    let dialog = app
+        .dialog()
+        .file()
+        .add_filter("manifest library", &["sqlite"]);
+    let chosen = tauri::async_runtime::spawn_blocking(move || pick(dialog))
+        .await
+        .map_err(err)?;
+    let Some(chosen) = chosen else {
         return Ok(None);
     };
-    let path = folder.into_path().map_err(err)?;
-    state::activate_library(&app, &path).map_err(err)?;
-    Ok(Some(path.to_string_lossy().to_string()))
+    let path = chosen.into_path().map_err(err)?;
+    let file = state::activate_library(&app, &path).map_err(err)?;
+    Ok(Some(file.to_string_lossy().to_string()))
 }
 
-/// Activate a library folder by explicit path (used to restore on startup or
-/// to set one without the picker).
+/// Pick an existing library file and open it.
 #[tauri::command]
-fn set_library_folder(
-    app: AppHandle,
-    state: State<AppState>,
-    path: String,
-) -> Result<Vec<Entry>, String> {
-    let root = std::path::PathBuf::from(path);
-    if !root.is_dir() {
-        return Err(format!("{} is not a folder", root.display()));
+async fn open_library(app: AppHandle) -> Result<Option<String>, String> {
+    pick_library(app, |d| d.set_title("Open a library").blocking_pick_file()).await
+}
+
+/// Choose where to save a new library file and create it. Choosing a file
+/// that already exists opens it; it is never overwritten.
+#[tauri::command]
+async fn new_library(app: AppHandle) -> Result<Option<String>, String> {
+    pick_library(app, |d| {
+        d.set_title("New library")
+            .set_file_name(DB_FILE)
+            .blocking_save_file()
+    })
+    .await
+}
+
+/// Activate a library by explicit path (switching to a recent library).
+/// Returns the file it resolved to: a folder from an older recent-libraries
+/// list resolves to the `library.sqlite` inside it.
+#[tauri::command]
+fn set_library(app: AppHandle, path: String) -> Result<String, String> {
+    let path = std::path::PathBuf::from(path);
+    if !path.exists() {
+        return Err(format!("{} no longer exists", path.display()));
     }
-    state::activate_library(&app, &root).map_err(err)?;
-    state.with_db(|db| db.list()).map_err(err)
+    let file = state::activate_library(&app, &path).map_err(err)?;
+    Ok(file.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -264,8 +282,9 @@ fn set_rawg_key(app: AppHandle, key: String) -> Result<(), String> {
 pub fn handlers() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         get_library_path,
-        choose_library_folder,
-        set_library_folder,
+        open_library,
+        new_library,
+        set_library,
         list_entries,
         get_entry,
         add_log,

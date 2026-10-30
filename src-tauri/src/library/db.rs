@@ -1,5 +1,5 @@
-//! The library database: one SQLite file, `library.sqlite`, in the folder the
-//! user picked. Every read and write of library data goes through [`Db`].
+//! The library database: one SQLite file the user picked (`library.sqlite` by
+//! default). Every read and write of library data goes through [`Db`].
 //!
 //! Two tables:
 //! - `entries` — one row per title. The shared fields are typed columns; the
@@ -20,7 +20,19 @@ use serde_json::{Map, Value as Json};
 
 use super::schema::{Entry, LogEntry, Medium, Status};
 
+/// The default file name, and the file an older folder pointer resolves to.
 pub const DB_FILE: &str = "library.sqlite";
+
+/// The library file `path` names. Older configs (and recent-library lists)
+/// point at the *folder* holding `library.sqlite`; such a folder resolves to
+/// that file, so existing libraries keep opening.
+pub fn library_file(path: &Path) -> PathBuf {
+    if path.is_dir() {
+        path.join(DB_FILE)
+    } else {
+        path.to_path_buf()
+    }
+}
 
 /// Bump when `SCHEMA` changes, and add a migration step in [`migrate`].
 const SCHEMA_VERSION: i64 = 1;
@@ -87,18 +99,20 @@ pub struct LogDraft {
 
 pub struct Db {
     conn: Connection,
-    root: PathBuf,
+    path: PathBuf,
 }
 
 impl Db {
-    /// Open (or create) the database in `root`. A brand-new database imports
-    /// any legacy `.toml` library found in the same folder, once.
-    pub fn open(root: &Path) -> Result<Db> {
-        std::fs::create_dir_all(root)
-            .with_context(|| format!("creating library folder {}", root.display()))?;
-        let path = root.join(DB_FILE);
-        let conn =
-            Connection::open(&path).with_context(|| format!("opening {}", path.display()))?;
+    /// Open (or create) the database file at `path`. A brand-new database
+    /// imports any legacy `.toml` library found in the same folder, once.
+    pub fn open(path: &Path) -> Result<Db> {
+        if path.is_dir() {
+            bail!("{} is a folder, not a library file", path.display());
+        }
+        let folder = path.parent().unwrap_or(Path::new(""));
+        std::fs::create_dir_all(folder)
+            .with_context(|| format!("creating folder {}", folder.display()))?;
+        let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         // Rollback journal rather than WAL: WAL keeps -wal/-shm files beside the
         // database, which sync tools (iCloud, Dropbox) can copy out of step.
         conn.execute_batch(
@@ -110,11 +124,11 @@ impl Db {
 
         let mut db = Db {
             conn,
-            root: root.to_path_buf(),
+            path: path.to_path_buf(),
         };
         let fresh = db.migrate()?;
         if fresh {
-            let legacy = super::import::read_legacy(root);
+            let legacy = super::import::read_legacy(folder);
             if !legacy.is_empty() {
                 let n = db.import(legacy)?;
                 log::info!("imported {n} entries from the legacy .toml library");
@@ -123,8 +137,8 @@ impl Db {
         Ok(db)
     }
 
-    pub fn root(&self) -> &Path {
-        &self.root
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// Bring the schema up to date. Returns true when the database was new.

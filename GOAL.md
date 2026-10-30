@@ -15,9 +15,9 @@ inverts that: the library file is the product, the app is optional.
 
 ## Core principles (non-negotiable)
 
-1. **Your library is one file you own.** Everything lives in `library.sqlite` inside the
-   folder you choose — SQLite, the most widely readable database format there is. Copy
-   the folder and you've backed up everything; delete the app and the library is intact,
+1. **Your library is one file you own.** Everything lives in one SQLite file you choose
+   (`library.sqlite` by default), the most widely readable database format there is. Copy
+   the file and you've backed up everything; delete the app and the library is intact,
    readable by any SQLite tool (`sqlite3`, DB Browser, Datasette, Python…).
 2. **Never lose what the user wrote.** Every write is a transaction (all or nothing).
    Deleting an entry moves it to the trash rather than erasing it. Input is validated
@@ -91,10 +91,10 @@ stats/insights, import from Letterboxd/MAL/Goodreads exports, custom media types
 tags/collections, multi-device sync via the user's own file-sync tool.
 
 **Explicitly out of scope:** any hosted backend, accounts, social features, telemetry, or
-storing user data anywhere but the user's chosen library folder.
+storing user data anywhere but the user's chosen library file.
 
 ## Success looks like
 
-Someone clones the repo, points manifest at a folder, logs a few films, and their whole
-library is one file in that folder — easy to back up, readable by any SQLite tool, and
+Someone clones the repo, creates a library, logs a few films, and their whole library is
+that one file — easy to back up, readable by any SQLite tool, and
 never at the mercy of a service shutting down.

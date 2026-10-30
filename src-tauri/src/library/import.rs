@@ -1,7 +1,7 @@
 //! One-time import of the legacy library: one `.toml` file per entry under
 //! `<root>/<medium dir>/`, with the log kept as dated text blocks in `notes`.
 //!
-//! Runs when a folder is opened for the first time without a `library.sqlite`.
+//! Runs when a new library file is created in a folder that holds one.
 //! The `.toml` files are only read, never changed or deleted.
 
 use std::path::Path;

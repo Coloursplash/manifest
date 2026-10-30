@@ -10,7 +10,7 @@ import App from "../../src/App";
 import type { Candidate, CreatePayload, Entry, LogEntry } from "../../src/lib/types";
 
 export interface BackendSeed {
-  /** The active library folder. `null` forces onboarding; defaults to "/lib". */
+  /** The active library file. `null` forces onboarding; defaults to "/lib/library.sqlite". */
   path?: string | null;
   entries?: Entry[];
   hasTmdbKey?: boolean;
@@ -37,7 +37,7 @@ const slugify = (s: string) =>
 export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
   const entries = new Map<string, Entry>();
   for (const e of seed.entries ?? []) entries.set(e.id, { ...e });
-  const path = seed.path === undefined ? "/lib" : seed.path;
+  const path = seed.path === undefined ? "/lib/library.sqlite" : seed.path;
   const calls: FakeBackend["calls"] = [];
   let logSeq = 0;
 
@@ -47,10 +47,14 @@ export function installFakeBackend(seed: BackendSeed = {}): FakeBackend {
     switch (cmd) {
       case "get_library_path":
         return path;
-      case "choose_library_folder":
+      case "open_library":
+      case "new_library":
         return path;
-      case "set_library_folder":
-        return [...entries.values()];
+      case "set_library": {
+        // Like the backend: an old folder path resolves to the file inside it.
+        const p = args.path as string;
+        return p.endsWith(".sqlite") ? p : `${p}/library.sqlite`;
+      }
       case "list_entries":
         return [...entries.values()];
       case "get_entry":

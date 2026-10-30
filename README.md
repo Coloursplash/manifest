@@ -9,7 +9,7 @@
 
 A local-first media tracker — like Letterboxd, but for **films, TV, anime, books, manga,
 videogames and music** — and your data never leaves your disk. Your whole library is one
-`library.sqlite` file in a folder you choose. manifest is a
+SQLite file, saved wherever you choose. manifest is a
 [Teenage Engineering](https://teenage.engineering/)-styled app over it that fetches
 covers and metadata and otherwise stays out of the way.
 
@@ -17,7 +17,7 @@ covers and metadata and otherwise stays out of the way.
 
 Every other tracker hosts your data. You can't read it without their app or back it up
 yourself, and you can't trust it'll exist next year. manifest inverts that: the library is
-a file you own, in an open format any SQLite tool can read. Copy the folder and you've
+a file you own, in an open format any SQLite tool can read. Copy that file and you've
 backed up everything.
 
 ## The log
@@ -42,8 +42,9 @@ year-in-review pages are built from them.
 - **Safe by design**: every write is all-or-nothing, input is validated, and trashing an
   entry hides it instead of erasing it.
 
-Upgrading from an older version that stored one `.toml` file per entry? Point manifest at
-that folder and it imports them once, leaving the files untouched.
+Upgrading from an older version that stored one `.toml` file per entry? Create a new
+library in that folder and it imports them once, leaving the files untouched. (A config
+that still points at a library *folder* opens the `library.sqlite` inside it.)
 
 ## Install with Nix
 
@@ -98,7 +99,7 @@ src-tauri/src/
   fetch/       metadata providers
   cover.rs     local cover cache
   commands.rs  Tauri command layer
-  state.rs     app state + config (folder pointer, API keys)
+  state.rs     app state + config (library file pointer, API keys)
 src/
   App.tsx      app state + wiring
   views/       library grid, timeline, review, entry page, add flow (views/add), settings

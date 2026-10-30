@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
-  chooseLibraryFolder,
   getLibraryPath,
   hasRawgKey,
   hasTmdbKey,
   listEntries,
-  setLibraryFolder,
+  newLibrary,
+  openLibrary,
+  setLibrary,
 } from "./lib/api";
 import {
   getLibraries,
@@ -180,13 +181,13 @@ export default function App() {
     setLibraryPath(path);
   }, []);
 
-  // Jump to a known recent folder (activates it on the backend by path). If it's
-  // gone (moved/deleted), drop it from the list rather than resurrecting it.
+  // Jump to a known recent library (activates it on the backend by path). If
+  // it's gone (moved/deleted), drop it from the list rather than resurrecting
+  // it. The backend answers with the file, which differs for an old folder row.
   const switchToLibrary = useCallback(
     async (path: string) => {
       try {
-        await setLibraryFolder(path);
-        finalizeSwitch(path);
+        finalizeSwitch(await setLibrary(path));
       } catch {
         setLibraries(removeLibrary(path));
       }
@@ -194,9 +195,14 @@ export default function App() {
     [finalizeSwitch],
   );
 
-  // Native picker → the chosen folder is already activated on the backend.
-  const browseForLibrary = useCallback(async () => {
-    const path = await chooseLibraryFolder();
+  // Native dialogs → the chosen file is already activated on the backend.
+  const openLibraryFile = useCallback(async () => {
+    const path = await openLibrary();
+    if (path) finalizeSwitch(path);
+  }, [finalizeSwitch]);
+
+  const createLibraryFile = useCallback(async () => {
+    const path = await newLibrary();
     if (path) finalizeSwitch(path);
   }, [finalizeSwitch]);
 
@@ -383,7 +389,8 @@ export default function App() {
         onOpenEntry: (id) => setView({ kind: "detail", id }),
         onOpenReview: (year) => setView({ kind: "review", year }),
         onSwitchLibrary: switchToLibrary,
-        onBrowseLibrary: browseForLibrary,
+        onOpenLibrary: openLibraryFile,
+        onNewLibrary: createLibraryFile,
       }),
     // Handlers close over only stable setters, so state values are the real deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -514,7 +521,8 @@ export default function App() {
           libraryPath={libraryPath}
           libraries={libraries}
           onSwitchTo={switchToLibrary}
-          onBrowseLibrary={browseForLibrary}
+          onOpenLibrary={openLibraryFile}
+          onNewLibrary={createLibraryFile}
           onRenameLibrary={(path, name) => setLibraries(renameLibrary(path, name))}
           onRemoveLibrary={(path) => setLibraries(removeLibrary(path))}
           theme={theme}

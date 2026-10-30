@@ -25,6 +25,11 @@ impl TempLib {
         std::fs::create_dir_all(&root).expect("create temp library root");
         TempLib { root }
     }
+
+    /// The default library file inside the root.
+    pub fn file(&self) -> PathBuf {
+        self.root.join(manifest_lib::library::db::DB_FILE)
+    }
 }
 
 impl Drop for TempLib {

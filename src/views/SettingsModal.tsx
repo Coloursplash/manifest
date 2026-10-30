@@ -4,7 +4,7 @@ import { IconClose } from "../components/icons";
 import { MediaChooser } from "../components/MediaChooser";
 import { setRawgKey, setTmdbKey } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
-import { basename, type Library } from "../lib/libraries";
+import { defaultName, type Library } from "../lib/libraries";
 import { MEDIUM_LABEL, type Medium } from "../lib/types";
 import type { Theme } from "../lib/theme";
 
@@ -12,7 +12,8 @@ export function SettingsModal({
   libraryPath,
   libraries,
   onSwitchTo,
-  onBrowseLibrary,
+  onOpenLibrary,
+  onNewLibrary,
   onRenameLibrary,
   onRemoveLibrary,
   theme,
@@ -32,14 +33,16 @@ export function SettingsModal({
   onRawgKeyChanged,
   onClose,
 }: {
-  /** The active library folder, shown in the Library section. */
+  /** The active library file, shown in the Library section. */
   libraryPath: string | null;
   /** Recent libraries (most-recent-first), for the switch list. */
   libraries: Library[];
-  /** Activate a known recent folder by path. */
+  /** Activate a known recent library by path. */
   onSwitchTo: (path: string) => void;
-  /** Open the native picker to add/activate another folder. */
-  onBrowseLibrary: () => void;
+  /** Pick an existing library file and switch to it. */
+  onOpenLibrary: () => void;
+  /** Save a new, empty library file and switch to it. */
+  onNewLibrary: () => void;
   /** Set a library's nickname. */
   onRenameLibrary: (path: string, name: string) => void;
   /** Forget a library (removes it from the recent list only). */
@@ -103,7 +106,7 @@ export function SettingsModal({
         <div className="section">
           <div className="section__label">Library</div>
           <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 12px" }}>
-            The folder your library is saved in. Keep separate libraries — per person,
+            The file your library is saved in. Keep separate libraries — per person,
             or one for you and one for someone else on this machine — and switch
             between them here. Nickname each so they're easy to tell apart;
             nothing on disk is moved or changed.
@@ -122,13 +125,14 @@ export function SettingsModal({
             ))}
           </div>
 
-          <button
-            className="btn btn--accent"
-            style={{ marginTop: 14 }}
-            onClick={onBrowseLibrary}
-          >
-            Open another folder…
-          </button>
+          <div className="row" style={{ marginTop: 14 }}>
+            <button className="btn btn--accent" onClick={onOpenLibrary}>
+              Open library…
+            </button>
+            <button className="btn" onClick={onNewLibrary}>
+              New library…
+            </button>
+          </div>
         </div>
 
         {/* Appearance */}
@@ -371,7 +375,7 @@ export function ApiKeyField({
   );
 }
 
-/** One row in the recent-libraries list: an editable nickname, the folder path,
+/** One row in the recent-libraries list: an editable nickname, the file path,
  *  and switch/forget actions. The nickname is a local draft committed on blur or
  *  Enter so we don't churn storage on every keystroke. */
 function RecentLibraryRow({
@@ -390,7 +394,7 @@ function RecentLibraryRow({
   const [draft, setDraft] = useState(lib.name);
 
   function commit() {
-    const next = draft.trim() || basename(lib.path);
+    const next = draft.trim() || defaultName(lib.path);
     setDraft(next);
     if (next !== lib.name) onRename(next);
   }
@@ -406,7 +410,7 @@ function RecentLibraryRow({
           if (e.key === "Enter") e.currentTarget.blur();
         }}
         aria-label="Library nickname"
-        placeholder={basename(lib.path)}
+        placeholder={defaultName(lib.path)}
       />
       <code className="lib-recent__path" title={lib.path}>
         {lib.path}

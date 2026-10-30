@@ -20,12 +20,13 @@ pub fn run() {
                 )?;
             }
 
-            // Restore the last library folder if it still exists on disk.
+            // Restore the last library if it still exists on disk. (An older
+            // config names its folder; activating rewrites it to the file.)
             let handle = app.handle().clone();
             let cfg = state::read_config(&handle);
             if let Some(lib) = cfg.library {
                 let path = std::path::PathBuf::from(&lib);
-                if path.is_dir() {
+                if path.exists() {
                     if let Err(e) = state::activate_library(&handle, &path) {
                         log::warn!("could not restore library {lib}: {e:#}");
                     }

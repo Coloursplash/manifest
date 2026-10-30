@@ -43,7 +43,7 @@ fn imports_once_and_leaves_the_toml_files_alone() {
     )
     .unwrap();
 
-    let db = Db::open(&lib.root).unwrap();
+    let db = Db::open(&lib.file()).unwrap();
     let all = db.list().unwrap();
     assert_eq!(all.len(), 2, "the broken file is skipped, not fatal");
 
@@ -78,6 +78,6 @@ fn imports_once_and_leaves_the_toml_files_alone() {
     // Reopening doesn't import again, and a new .toml file is no longer read.
     drop(db);
     std::fs::write(films.join("later.toml"), "title = \"Later\"\n").unwrap();
-    let db = Db::open(&lib.root).unwrap();
+    let db = Db::open(&lib.file()).unwrap();
     assert_eq!(db.list().unwrap().len(), 2);
 }

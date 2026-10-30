@@ -62,7 +62,8 @@ export interface PaletteContext {
   onOpenEntry: (id: string) => void;
   onOpenReview: (year: number) => void;
   onSwitchLibrary: (path: string) => void;
-  onBrowseLibrary: () => void;
+  onOpenLibrary: () => void;
+  onNewLibrary: () => void;
 }
 
 const el = (Icon: (p: { size?: number }) => JSX.Element, size = 15) => Icon({ size });
@@ -173,18 +174,26 @@ export function buildCommands(ctx: PaletteContext): Command[] {
       title: `Switch to “${l.name}”`,
       subtitle: l.path,
       group: "Library",
-      keywords: "folder change open",
+      keywords: "file change open",
       icon: el(IconFolder),
       perform: () => ctx.onSwitchLibrary(l.path),
     });
   }
   cmds.push({
-    id: "library.browse",
-    title: "Open another folder…",
+    id: "library.open",
+    title: "Open library…",
     group: "Library",
-    keywords: "library switch browse",
+    keywords: "library switch browse file",
     icon: el(IconFolder),
-    perform: ctx.onBrowseLibrary,
+    perform: ctx.onOpenLibrary,
+  });
+  cmds.push({
+    id: "library.new",
+    title: "New library…",
+    group: "Library",
+    keywords: "library create file",
+    icon: el(IconFolder),
+    perform: ctx.onNewLibrary,
   });
 
   // --- Jump to an entry ---------------------------------------------------

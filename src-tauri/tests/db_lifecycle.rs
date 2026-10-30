@@ -5,7 +5,7 @@
 mod common;
 
 use common::TempLib;
-use manifest_lib::library::db::{Db, LogDraft, NewEntry, DB_FILE};
+use manifest_lib::library::db::{library_file, Db, LogDraft, NewEntry, DB_FILE};
 use manifest_lib::library::schema::{Medium, Status};
 use serde_json::{json, Map, Value};
 
@@ -36,8 +36,8 @@ fn patch(v: Value) -> Map<String, Value> {
 #[test]
 fn full_lifecycle_survives_reopening() {
     let lib = TempLib::new();
-    let mut db = Db::open(&lib.root).unwrap();
-    assert!(lib.root.join(DB_FILE).exists());
+    let mut db = Db::open(&lib.file()).unwrap();
+    assert!(lib.file().exists());
 
     let mut fields = Map::new();
     fields.insert("episodes".into(), json!(9));
@@ -78,7 +78,7 @@ fn full_lifecycle_survives_reopening() {
     assert_eq!(e.logs[1].body, "First.\n\nSecond.");
 
     drop(db);
-    let mut db = Db::open(&lib.root).unwrap();
+    let mut db = Db::open(&lib.file()).unwrap();
     let e = db.get("tv/severance").unwrap();
     assert_eq!(e.logs.len(), 2);
     assert_eq!(e.started.as_deref(), Some("2026-03-01"));
@@ -115,7 +115,7 @@ fn full_lifecycle_survives_reopening() {
 #[test]
 fn same_title_gets_its_own_id() {
     let lib = TempLib::new();
-    let mut db = Db::open(&lib.root).unwrap();
+    let mut db = Db::open(&lib.file()).unwrap();
     let a = db.create(new(Medium::Film, "Dune", Some(1984))).unwrap();
     let b = db.create(new(Medium::Film, "Dune", Some(2021))).unwrap();
     let c = db.create(new(Medium::Film, "Dune", Some(2021))).unwrap();
@@ -140,7 +140,7 @@ fn same_title_gets_its_own_id() {
 #[test]
 fn bad_input_is_refused_and_changes_nothing() {
     let lib = TempLib::new();
-    let mut db = Db::open(&lib.root).unwrap();
+    let mut db = Db::open(&lib.file()).unwrap();
     let e = db.create(new(Medium::Book, "Piranesi", None)).unwrap();
 
     assert!(db.add_log(&e.id, log("", None, "no date")).is_err());
@@ -183,4 +183,32 @@ fn bad_input_is_refused_and_changes_nothing() {
         )
         .unwrap();
     assert_eq!(e.logs[0].tags, vec!["reread", "my-tag"]);
+}
+
+#[test]
+fn a_library_is_any_file_and_an_old_folder_pointer_finds_its_file() {
+    let lib = TempLib::new();
+
+    // A library can live under any name, in a folder that doesn't exist yet.
+    let custom = lib.root.join("shared/ours.sqlite");
+    let mut db = Db::open(&custom).unwrap();
+    db.create(new(Medium::Film, "Arrival", Some(2016))).unwrap();
+    drop(db);
+    assert!(custom.is_file());
+    assert_eq!(library_file(&custom), custom);
+
+    // Configs and recent lists from before held the folder; it resolves to the
+    // library.sqlite inside, and the folder itself is refused as a file.
+    let mut db = Db::open(&lib.file()).unwrap();
+    db.create(new(Medium::Book, "Piranesi", None)).unwrap();
+    drop(db);
+    assert_eq!(library_file(&lib.root), lib.root.join(DB_FILE));
+    assert!(Db::open(&lib.root).is_err());
+    let db = Db::open(&library_file(&lib.root)).unwrap();
+    assert_eq!(db.get("book/piranesi").unwrap().title, "Piranesi");
+    assert_eq!(
+        db.list().unwrap().len(),
+        1,
+        "the two files are separate libraries"
+    );
 }

@@ -24,6 +24,18 @@ describe("library flow", () => {
     expect(screen.getByText("Dune")).toBeInTheDocument();
   });
 
+  it("folds a recent library saved as a folder into its file, nickname kept", async () => {
+    localStorage.setItem(
+      "manifest-libraries",
+      JSON.stringify([{ path: "/lib", name: "Home" }]),
+    );
+    renderApp({ entries: SEED }); // the backend reports /lib/library.sqlite
+    await screen.findByText("Blade Runner");
+    expect(JSON.parse(localStorage.getItem("manifest-libraries")!)).toEqual([
+      { path: "/lib/library.sqlite", name: "Home" },
+    ]);
+  });
+
   it("filtering in the pill narrows the grid", async () => {
     const user = userEvent.setup();
     renderApp({ entries: SEED });

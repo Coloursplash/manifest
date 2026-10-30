@@ -3,25 +3,26 @@ import { useEffect, useState } from "react";
 import { IconBack, IconCheck, IconFolder } from "../components/icons";
 import { MediaChooser } from "../components/MediaChooser";
 import {
-  chooseLibraryFolder,
   hasRawgKey,
   hasTmdbKey,
+  newLibrary,
+  openLibrary,
   setRawgKey,
   setTmdbKey,
 } from "../lib/api";
 import { MEDIUM_LABEL, type Medium } from "../lib/types";
 import { ApiKeyField } from "./SettingsModal";
 
-type StepKey = "folder" | "media" | "keys" | "ready";
+type StepKey = "library" | "media" | "keys" | "ready";
 
 const STEP_LABEL: Record<StepKey, string> = {
-  folder: "Folder",
+  library: "Library",
   media: "Track",
   keys: "Keys",
   ready: "Ready",
 };
 
-/** First-run setup: pick a library folder, choose what to track, drop in the
+/** First-run setup: create or open a library, choose what to track, drop in the
  *  optional API keys, then land on the home screen. Everything here also lives
  *  in Settings, so this is a convenience path, not the only way to configure. */
 export function Onboarding({
@@ -42,7 +43,7 @@ export function Onboarding({
   onReorderMedia: (order: Medium[]) => void;
 }) {
   const [path, setPath] = useState<string | null>(null);
-  const [step, setStep] = useState<StepKey>("folder");
+  const [step, setStep] = useState<StepKey>("library");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasTmdb, setHasTmdb] = useState(false);
@@ -55,7 +56,7 @@ export function Onboarding({
 
   // The keys step is skipped entirely when nothing they track needs a key.
   const steps: StepKey[] = [
-    "folder",
+    "library",
     "media",
     ...(showKeys ? (["keys"] as StepKey[]) : []),
     "ready",
@@ -70,11 +71,11 @@ export function Onboarding({
     hasRawgKey().then(setHasRawg).catch(() => {});
   }, [step]);
 
-  async function pickFolder() {
+  async function pick(dialog: () => Promise<string | null>) {
     setBusy(true);
     setError(null);
     try {
-      const chosen = await chooseLibraryFolder();
+      const chosen = await dialog();
       if (chosen) setPath(chosen);
     } catch (e) {
       setError(String(e));
@@ -84,7 +85,7 @@ export function Onboarding({
   }
 
   function next() {
-    if (step === "folder") {
+    if (step === "library") {
       if (path) setStep("media");
     } else if (step === "media") {
       setStep(showKeys ? "keys" : "ready");
@@ -96,12 +97,12 @@ export function Onboarding({
   }
 
   function back() {
-    if (step === "media") setStep("folder");
+    if (step === "media") setStep("library");
     else if (step === "keys") setStep("media");
     else if (step === "ready") setStep(showKeys ? "keys" : "media");
   }
 
-  const canAdvance = step !== "folder" || path !== null;
+  const canAdvance = step !== "library" || path !== null;
 
   return (
     <div className="center">
@@ -129,15 +130,15 @@ export function Onboarding({
           ))}
         </ol>
 
-        {step === "folder" && (
+        {step === "library" && (
           <div className="wizard__pane">
-            <h2>Choose a library folder</h2>
+            <h2>Create or open a library</h2>
             <p>
-              Your films, TV, anime, books, manga, games, and music are saved here
-              in one file, <code>library.sqlite</code> — back up or sync the folder
-              and you have everything. Pick an empty folder to start, or an
-              existing library to open it. An older library of <code>.toml</code>{" "}
-              files is imported automatically (the files are left as they are).
+              Your films, TV, anime, books, manga, games, and music are saved in
+              one file — back it up or sync it and you have everything. Start a
+              new library, or open one you already have. A new library saved next
+              to an older library of <code>.toml</code> files imports them
+              automatically (the files are left as they are).
             </p>
             {path ? (
               <div className="wizard__chosen">
@@ -147,20 +148,29 @@ export function Onboarding({
                 </code>
                 <button
                   className="btn btn--ghost btn--sm"
-                  onClick={pickFolder}
+                  onClick={() => pick(openLibrary)}
                   disabled={busy}
                 >
                   Change
                 </button>
               </div>
             ) : (
-              <button
-                className="btn btn--accent"
-                onClick={pickFolder}
-                disabled={busy}
-              >
-                {busy ? "Opening…" : "Choose folder"}
-              </button>
+              <div className="row">
+                <button
+                  className="btn btn--accent"
+                  onClick={() => pick(newLibrary)}
+                  disabled={busy}
+                >
+                  New library…
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => pick(openLibrary)}
+                  disabled={busy}
+                >
+                  Open library…
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -220,7 +230,7 @@ export function Onboarding({
               Hit <strong>+ Add</strong> to log your first title.
             </p>
             <dl className="wizard__summary">
-              <dt>Folder</dt>
+              <dt>Library</dt>
               <dd>
                 <code title={path ?? ""}>{path}</code>
               </dd>
