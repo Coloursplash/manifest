@@ -1,4 +1,15 @@
-# manifest
+<p align="center">
+  <img src="docs/logo.svg" width="128" alt="manifest logo" />
+</p>
+
+<h1 align="center">manifest</h1>
+
+<p align="center">
+  A local-first diary for everything you watch, read, play and listen to.<br />
+  One SQLite file on your disk. No accounts, no cloud.
+</p>
+
+![The library: in-progress and backlog shelves across every medium](docs/screenshots/library.png)
 
 > [!WARNING]
 > **This app is entirely vibe coded.** It was written by AI coding agents (Claude) with a
@@ -27,6 +38,10 @@ watched, read, played or listened — a single day for a film or an album, or a 
 days** for things you get through over time (a season, a book, a sixty-hour game). Logs
 carry tags like `#rewatch` and a free-text note of any length. The timeline and the
 year-in-review pages are built from them.
+
+| An entry and its log | The year in review |
+| --- | --- |
+| ![An entry page: status, rating, details and a dated log](docs/screenshots/entry.png) | ![Year in review: totals, a breakdown by medium and monthly activity](docs/screenshots/review.png) |
 
 ## Features
 
@@ -75,6 +90,20 @@ overlay: `nixpkgs.overlays = [ manifest.overlays.default ]` gives you `pkgs.mani
 
 To try it without installing: `nix run github:Coloursplash/manifest`.
 
+## Install from source (macOS, Linux)
+
+Without Nix, `scripts/install.sh` builds the app and installs it: `manifest.app` into
+`/Applications` (or `~/Applications`) on macOS, and on Linux a binary in `~/.local/bin` with a
+desktop entry. It needs git, [Rust](https://rustup.rs) and Node 18+, plus the Xcode Command
+Line Tools on macOS or the
+[WebKitGTK packages](https://v2.tauri.app/start/prerequisites/#linux) on Linux.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Coloursplash/manifest/main/scripts/install.sh | bash
+```
+
+Or run `./scripts/install.sh` from a checkout. Run it again to update. Windows isn't supported yet.
+
 Film/TV search needs a free [TMDB](https://www.themoviedb.org/settings/api) key and game
 search a free [RAWG](https://rawg.io/apidocs) key — add them in Settings, or set
 `TMDB_API_KEY` / `RAWG_API_KEY`. Anime, manga, books and music need no key.
@@ -106,7 +135,12 @@ src/
   components/  pill (OmniBox), rail, log list + editor, rating, cover, …
   lib/         typed API wrappers, types, and pure logic (sort, filter, timeline, logs)
   styles/      the TE design system
+docs/          logo + README screenshots
 ```
+
+The app icon's source is `src-tauri/icons/icon.svg`. To change it, export a 1024px PNG and
+run `npm run tauri icon <png>`, then delete the `android/`, `ios/` and `64x64.png` it also
+writes.
 
 See `GOAL.md` for the vision and `AGENTS.md` for engineering conventions and an
 architecture map.
