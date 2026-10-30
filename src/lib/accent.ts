@@ -2,6 +2,8 @@
 // lighter hover shade and an auto-contrasting "ink" for text on the accent) on
 // the root element, so it wins over the stylesheet in both themes. Persisted.
 
+import { readPref, writePref } from "./prefs";
+
 const KEY = "manifest-accent";
 export const DEFAULT_ACCENT = "#ff5300";
 
@@ -18,7 +20,9 @@ export const ACCENT_PRESETS = [
 ];
 
 export function getAccent(): string {
-  return localStorage.getItem(KEY) || DEFAULT_ACCENT;
+  const saved = readPref(KEY);
+  // Only a real hex colour; anything else would feed NaN into the palette.
+  return saved && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(saved) ? saved : DEFAULT_ACCENT;
 }
 
 export function applyAccent(hex: string): void {
@@ -26,7 +30,7 @@ export function applyAccent(hex: string): void {
   root.style.setProperty("--accent", hex);
   root.style.setProperty("--accent-hi", lighten(hex, 0.16));
   root.style.setProperty("--accent-ink", pickInk(hex));
-  localStorage.setItem(KEY, hex);
+  writePref(KEY, hex);
 }
 
 export function initAccent(): string {

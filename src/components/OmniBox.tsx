@@ -124,21 +124,39 @@ export const OmniBox = forwardRef<
   useEffect(() => setActive(0), [cmd, filter, mode]);
 
   // Measure the field so the dropdown can be position:fixed (escapes clipping).
-  // Add mode gets a wider, clamped panel to fit the cover grid.
+  // Add mode gets a wider, clamped panel to fit the cover grid. Re-measured
+  // whenever the field moves or resizes while open — resizing the window or
+  // dragging the rail shifts the pill, and the panel has to follow it.
   useLayoutEffect(() => {
-    if (!panelOpen || !boxRef.current) {
+    const box = boxRef.current;
+    if (!panelOpen || !box) {
       setPos(null);
       return;
     }
-    const r = boxRef.current.getBoundingClientRect();
-    if (addModeOn) {
-      const w = Math.min(560, window.innerWidth - 24);
-      const left = Math.max(12, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - 12 - w));
-      setPos({ top: r.bottom + 6, left, width: w });
-    } else {
-      setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    function measure() {
+      const r = box!.getBoundingClientRect();
+      if (addModeOn) {
+        const w = Math.min(560, window.innerWidth - 24);
+        const left = Math.max(12, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - 12 - w));
+        setPos({ top: r.bottom + 6, left, width: w });
+      } else {
+        setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+      }
     }
-  }, [panelOpen, addModeOn, value]);
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(box);
+    // Dragging the rail *moves* the pill without resizing it, which a
+    // ResizeObserver can't see — but it does resize the full-width header row
+    // the pill is centred in, so watch that too.
+    const row = box.closest(".omnibar");
+    if (row) observer?.observe(row);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [panelOpen, addModeOn]);
 
   useLayoutEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`);

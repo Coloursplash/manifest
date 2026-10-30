@@ -2,6 +2,8 @@
 // library data), so it lives in localStorage alongside theme/accent — never in
 // the user's library folder. Kept most-recent-first and capped.
 
+import { readPref, writePref } from "./prefs";
+
 export interface Library {
   path: string;
   /** Nickname; defaults to the folder's basename. */
@@ -19,7 +21,7 @@ export function basename(path: string): string {
 
 export function getLibraries(): Library[] {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = readPref(KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -36,7 +38,7 @@ export function getLibraries(): Library[] {
 }
 
 function save(list: Library[]): Library[] {
-  localStorage.setItem(KEY, JSON.stringify(list));
+  writePref(KEY, JSON.stringify(list));
   return list;
 }
 

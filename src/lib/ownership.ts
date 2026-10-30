@@ -7,6 +7,7 @@
 // This is a UI preference only: the `owned` key in a .toml file is always read and
 // always preserved, whether or not its medium is tracked here.
 
+import { readPref, writePref } from "./prefs";
 import { MEDIA, type Medium } from "./types";
 
 const KEY = "manifest-owned-media";
@@ -22,7 +23,7 @@ const isMedium = (x: unknown): x is Medium =>
 /** Media whose entries show an Owned toggle and split Backlog/Wishlist, in
  *  canonical MEDIA order. Falls back to the default set on anything unreadable. */
 export function getOwnedMedia(): Medium[] {
-  const raw = localStorage.getItem(KEY);
+  const raw = readPref(KEY);
   if (raw === null) return [...DEFAULT_OWNED_MEDIA];
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -40,7 +41,7 @@ export function getOwnedMedia(): Medium[] {
 export function saveOwnedMedia(media: Medium[]): Medium[] {
   const on = new Set(media.filter(isMedium));
   const next = MEDIA.filter((m) => on.has(m));
-  localStorage.setItem(KEY, JSON.stringify(next));
+  writePref(KEY, JSON.stringify(next));
   return next;
 }
 

@@ -239,6 +239,14 @@ export default function App() {
     [entries, upsert],
   );
 
+  // An open entry that vanished (trashed, or the library reloaded without it)
+  // has nothing to show — go back to the library rather than a blank page.
+  useEffect(() => {
+    if (view.kind === "detail" && !entries.some((e) => e.id === view.id)) {
+      setView({ kind: "grid" });
+    }
+  }, [view, entries]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter((e) => {

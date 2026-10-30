@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type CSSProperties } from "react";
 
 import { Cover } from "../components/Cover";
 import { isOwned } from "../lib/ownership";
+import { readJson, writeJson } from "../lib/prefs";
 import { MEDIA, MEDIUM_LABEL, type Entry, type Medium, type Status } from "../lib/types";
 
 // Grouped by where a thing sits in your life: what you're on now, what's queued,
@@ -65,13 +66,14 @@ export function cardWidth(total: number): number {
   return Math.floor((total - (cols - 1) * CARD_GAP) / cols);
 }
 
+/** Which sections are expanded. Anything but a plain object of booleans
+ *  (an old format, junk) reads as "all collapsed". */
 function loadOpen(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(COLLAPSE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
+  const saved = readJson(COLLAPSE_KEY);
+  if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+  return Object.fromEntries(
+    Object.entries(saved).filter(([, v]) => typeof v === "boolean"),
+  ) as Record<string, boolean>;
 }
 
 /** The library: entries grouped by status into shelves that expand to grids. */
@@ -139,7 +141,7 @@ export function LibraryGrid({
   function expand(def: SectionDef, value: boolean) {
     const next = { ...open, [def.key]: value };
     setOpen(next);
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next));
+    writeJson(COLLAPSE_KEY, next);
   }
 
   return (

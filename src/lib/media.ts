@@ -4,6 +4,7 @@
 // Persisted in localStorage like theme/accent. At least one medium is always
 // enabled.
 
+import { readPref, writePref } from "./prefs";
 import { MEDIA, type Medium } from "./types";
 
 const KEY = "manifest-enabled-media";
@@ -38,7 +39,7 @@ const allOn = (): MediaState => ({ order: [...MEDIA], enabled: [...MEDIA] });
 /** Read + normalise the saved state. New media (added since the save) are
  *  appended to the order and default to enabled; order always covers all MEDIA. */
 function load(): MediaState {
-  const raw = localStorage.getItem(KEY);
+  const raw = readPref(KEY);
   if (!raw) return allOn();
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -89,7 +90,7 @@ function persist(order: Medium[], enabled: Medium[]): MediaState {
     enabled: finalEnabled,
     known: [...MEDIA],
   };
-  localStorage.setItem(KEY, JSON.stringify(payload));
+  writePref(KEY, JSON.stringify(payload));
   return { order: fullOrder, enabled: finalEnabled };
 }
 

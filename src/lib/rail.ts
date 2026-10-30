@@ -1,6 +1,8 @@
 // Sidebar rail chrome: whether it's collapsed to icons, and how wide it is when
 // it isn't. Persisted locally (it's app chrome, not library data).
 
+import { readPref, writePref } from "./prefs";
+
 const KEY = "manifest-rail-collapsed";
 const WIDTH_KEY = "manifest-rail-width";
 
@@ -22,23 +24,23 @@ export function clampRailWidth(px: number): number {
 }
 
 export function getRailCollapsed(): boolean {
-  return localStorage.getItem(KEY) === "1";
+  return readPref(KEY) === "1";
 }
 
 export function setRailCollapsed(collapsed: boolean): boolean {
-  localStorage.setItem(KEY, collapsed ? "1" : "0");
+  writePref(KEY, collapsed ? "1" : "0");
   return collapsed;
 }
 
 /** The stored width, clamped. A missing or junk value reads as the default —
  *  a hand-edited localStorage shouldn't be able to leave the rail unusable. */
 export function getRailWidth(): number {
-  const raw = Number(localStorage.getItem(WIDTH_KEY));
+  const raw = Number(readPref(WIDTH_KEY));
   return Number.isFinite(raw) && raw > 0 ? clampRailWidth(raw) : RAIL_WIDTH;
 }
 
 export function setRailWidth(px: number): number {
   const w = clampRailWidth(px);
-  localStorage.setItem(WIDTH_KEY, String(w));
+  writePref(WIDTH_KEY, String(w));
   return w;
 }

@@ -1,6 +1,7 @@
 // Sort order for the grid, persisted locally. The timeline ignores this — it's
 // always date-desc. Entries missing the sort field sort to the end.
 
+import { readPref, writePref } from "./prefs";
 import { firstStarted, lastDone } from "./logs";
 import type { Entry } from "./types";
 
@@ -39,12 +40,12 @@ export const SORT_LABEL: Record<SortKey, string> = {
 const KEY = "manifest-sort";
 
 export function getSort(): SortKey {
-  const v = localStorage.getItem(KEY);
+  const v = readPref(KEY);
   return v && (SORT_KEYS as string[]).includes(v) ? (v as SortKey) : "title";
 }
 
 export function setSort(k: SortKey): SortKey {
-  localStorage.setItem(KEY, k);
+  writePref(KEY, k);
   return k;
 }
 
